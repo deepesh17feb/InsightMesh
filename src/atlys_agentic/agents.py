@@ -40,6 +40,9 @@ except ImportError:  # pragma: no cover
             llm=None,
             memory: bool = False,
             verbose: bool = True,
+            allow_delegation: bool = False,
+            max_iter: int = 5,
+            **kwargs,
         ):
             self.role = role
             self.goal = goal
@@ -48,6 +51,8 @@ except ImportError:  # pragma: no cover
             self.llm = llm
             self.memory = memory
             self.verbose = verbose
+            self.allow_delegation = allow_delegation
+            self.max_iter = max_iter
 
 
 def llm() -> LLM:
@@ -105,34 +110,58 @@ def _score_confidence_tool(
 
 _DEFAULT_AGENTS_CONFIG = {
     "instrumentation_engineer": {
-        "role": "Senior ClickHouse DBA",
-        "goal": "Turn a feature spec and raw event sample into production-grade DDL and materialized views.",
-        "backstory": (
-            "You design ClickHouse schemas for high-volume event data. You never inherit the "
-            "legacy id-first ORDER BY from older tables; you always lead with (timestamp, user_id)."
+        "role": "Staff ClickHouse Systems & Telemetry Architect",
+        "goal": (
+            "Transform product feature specifications and raw telemetry event streams into production-grade, "
+            "high-performance ClickHouse DDL and high-leverage Materialized Views with zero schema anti-patterns."
         ),
+        "backstory": (
+            "You are a veteran ClickHouse database architect specializing in high-throughput event telemetry "
+            "and real-time analytical engines. Always lead ordering keys with query filter predicates (timestamp, user_id). "
+            "Always partition raw tables by toYYYYMM(timestamp), strictly enforce LowCardinality types, apply 12-month TTLs, "
+            "and only generate Materialized Views that earn their keep with clear justification."
+        ),
+        "allow_delegation": False,
+        "verbose": True,
+        "max_iter": 5,
     },
     "context_librarian": {
-        "role": "Business-Logic Gatekeeper and Auditor",
-        "goal": "Keep business_context current, versioned, and free of unflagged contradictions.",
-        "backstory": (
-            "You treat base_context.md with suspicion. Every new table or column gets diffed "
-            "against the existing context; conflicts and gaps get surfaced, never silently ignored."
+        "role": "Lead Business-Logic Integrity Auditor & Context Gatekeeper",
+        "goal": (
+            "Maintain an authoritative, version-controlled business context layer in chDB, proactively detecting, "
+            "versioning, and surfacing every schema contradiction, metric gap, or semantic drift."
         ),
+        "backstory": (
+            "You are the meticulous guardian of organizational business logic, metric definitions, and event schemas. "
+            "You treat initial documentation and base context with rigorous, constructive skepticism. Diff every schema change, "
+            "actively detect context traps (denominator ambiguity, data quality caveats, anti-patterns, boundary issues), "
+            "and record versioned changelog entries with trace attribution."
+        ),
+        "allow_delegation": False,
+        "verbose": True,
+        "max_iter": 5,
     },
     "product_analyst": {
-        "role": "Principal Data Scientist",
-        "goal": "Answer PM questions with an actionable insight, the why, a confidence score, and no DB jargon.",
-        "backstory": (
-            "You never pull raw rows into context — you push aggregation into ClickHouse and "
-            "interpret JSON summaries. You always cut by device, geo, and destination before concluding."
+        "role": "Principal Product Analytics & Growth Data Scientist",
+        "goal": (
+            "Deliver high-impact, PM-actionable product insights that uncover the root cause ('the why') behind "
+            "funnel conversion changes, supported by multi-dimensional cuts and calibrated confidence scores."
         ),
+        "backstory": (
+            "You are a seasoned Principal Product Data Scientist who bridges complex ClickHouse analytics and executive "
+            "product strategy. Never pull raw rows into context; push aggregation into ClickHouse, mandate 3-way multi-cuts "
+            "(device_type, geoip_country_code, destination), match known platform issues (K1–K7), score confidence objectively, "
+            "and eliminate all SQL/DB jargon for PM audiences."
+        ),
+        "allow_delegation": False,
+        "verbose": True,
+        "max_iter": 5,
     },
 }
 
 
 def load_agents_config() -> dict:
-    """Load agent persona configuration (role, goal, backstory) from YAML config file."""
+    """Load agent persona configuration (role, goal, backstory, parameters) from YAML config file."""
     config_file = getattr(paths, "AGENTS_CONFIG_YAML", paths.ATLYS_AGENTIC_DIR / "config" / "agents.yaml")
     if config_file.exists():
         try:
@@ -155,7 +184,9 @@ def build_instrumentation_engineer() -> Agent:
         tools=[_infer_schema_tool, _generate_mv_tool, _execute_ddl_tool],
         llm=llm(),
         memory=False,
-        verbose=True,
+        verbose=cfg.get("verbose", True),
+        allow_delegation=cfg.get("allow_delegation", False),
+        max_iter=cfg.get("max_iter", 5),
     )
 
 
@@ -168,7 +199,9 @@ def build_context_librarian() -> Agent:
         tools=[_context_diff_tool, _context_upsert_tool],
         llm=llm(),
         memory=False,
-        verbose=True,
+        verbose=cfg.get("verbose", True),
+        allow_delegation=cfg.get("allow_delegation", False),
+        max_iter=cfg.get("max_iter", 5),
     )
 
 
@@ -181,6 +214,8 @@ def build_product_analyst() -> Agent:
         tools=[_analytics_compute_tool, _score_confidence_tool],
         llm=llm(),
         memory=False,
-        verbose=True,
+        verbose=cfg.get("verbose", True),
+        allow_delegation=cfg.get("allow_delegation", False),
+        max_iter=cfg.get("max_iter", 5),
     )
 

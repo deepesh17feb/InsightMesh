@@ -35,3 +35,26 @@ def test_product_analyst_has_no_ddl_tool():
     tool_names = {t.name for t in agent.tools}
     assert "execute_ddl" not in tool_names
     assert {"analytics_compute", "score_confidence"} <= tool_names
+
+
+def test_agent_configurations_and_execution_parameters():
+    cfg = agents.load_agents_config()
+    for key in ("instrumentation_engineer", "context_librarian", "product_analyst"):
+        assert key in cfg
+        assert len(cfg[key]["role"]) > 0
+        assert len(cfg[key]["goal"]) > 0
+        assert len(cfg[key]["backstory"]) > 0
+
+    for builder in (
+        agents.build_instrumentation_engineer,
+        agents.build_context_librarian,
+        agents.build_product_analyst,
+    ):
+        agent = builder()
+        assert agent.allow_delegation is False
+        assert agent.verbose is True
+        assert agent.max_iter == 5
+        assert len(agent.role) > 0
+        assert len(agent.goal) > 0
+        assert len(agent.backstory) > 0
+
