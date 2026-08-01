@@ -5,6 +5,7 @@ diffing must be reproducible given the same input, independent of any model
 call, so a judge re-running the pipeline gets the same schema/score every time.
 """
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
