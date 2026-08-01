@@ -138,9 +138,18 @@ def render_app():
         spec_path = paths.spec_md(selected_spec)
         if spec_path.exists():
             spec_text = spec_path.read_text(encoding="utf-8")
-        inferred_table = tools.Tool_Infer_Table_Name(selected_spec, spec_text)
-
-        st.metric("Inferred Table Name", inferred_table, help="Automatically determined by the Instrumentation Engineer from the spec.")
+        # Sleek, compact & highly noticeable Inferred Table Badge
+        st.markdown(
+            f"""
+            <div style="background: rgba(30, 58, 138, 0.25); border: 1px solid #3B82F6; border-radius: 7px; padding: 0.45rem 0.65rem; margin: 0.5rem 0 0.65rem 0;">
+                <div style="font-size: 0.68rem; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">⚡ Inferred Table</div>
+                <div style="font-size: 0.90rem; font-weight: 700; color: #60A5FA; font-family: 'JetBrains Mono', monospace; margin-top: 0.1rem; word-break: break-all;">
+                    {inferred_table}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         with st.expander("⚙️ Advanced Settings"):
             override = st.checkbox("Override Inferred Table Name", value=False)
