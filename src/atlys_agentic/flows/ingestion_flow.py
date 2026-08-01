@@ -53,7 +53,15 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
 
     def __init__(self):
         super().__init__()
-        self.state = IngestionState()
+        # crewai's typed Flow (Flow[IngestionState]) auto-creates `state` from the
+        # generic parameter and exposes it as a read-only property (no setter).
+        # Assigning self.state here raises AttributeError on modern crewai; only
+        # initialise manually for the no-crewai fallback base class.
+        if getattr(self, "state", None) is None:
+            try:
+                self.state = IngestionState()
+            except AttributeError:
+                pass
 
     @start()
     def infer_schema(self):

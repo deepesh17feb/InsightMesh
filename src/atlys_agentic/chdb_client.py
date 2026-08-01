@@ -112,16 +112,16 @@ def _run_sqlite_fallback(sql: str, fmt: str = "JSON"):
 
 
 def run(sql: str, fmt: str = "JSON"):
-    paths.CHDB_PATH.mkdir(parents=True, exist_ok=True)
     try:
-        import chdb
-        result = chdb.query(sql, output_format=fmt, path=str(paths.CHDB_PATH))
+        with _chdb_lock:
+            session = _get_chdb_session()
+            result = session.query(sql, fmt)
         text = str(result)
         if fmt == "JSON" and text.strip():
             payload = json.loads(text)
             return payload.get("data", [])
         return text
-    except (ImportError, Exception):
+    except Exception:
         return _run_sqlite_fallback(sql, fmt=fmt)
 
 
