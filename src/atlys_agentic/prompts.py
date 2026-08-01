@@ -113,3 +113,22 @@ def build_context_librarian_prompt(
         f"Documentation Gaps: {gaps}\n\n"
         f"In 2 sentences, explain the semantic integrity of this ingestion and highlight any data quality caveats or metric boundary rules."
     )
+
+
+def build_instrumentation_followup_prompt(
+    question: str,
+    table_name: str,
+    current_ddl: str,
+    spec_context: str = "",
+) -> str:
+    """Construct prompt for Instrumentation Engineer LLM multi-turn follow-up queries."""
+    return (
+        f"You are the Staff Instrumentation Engineer and ClickHouse Telemetry Architect at Atlys.\n"
+        f"Target Table: {table_name}\n"
+        f"Current ClickHouse DDL:\n{current_ddl}\n\n"
+        f"Context / Spec Details: {spec_context or 'Standard event telemetry stream'}\n\n"
+        f"Operator / Engineer Question: '{question}'\n\n"
+        f"Provide a rigorous, expert ClickHouse engineering response explaining storage mechanics, "
+        f"index granularity, partition management, or updated DDL if a schema change was requested."
+    )
+

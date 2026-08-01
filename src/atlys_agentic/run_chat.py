@@ -36,7 +36,7 @@ except ImportError:  # pragma: no cover
 
     from pydantic import BaseModel, Field
 
-from atlys_agentic import chdb_client, paths, tracing
+from atlys_agentic import chdb_client, conversational_ingestion, paths, prompts, tracing
 from atlys_agentic.flows import analysis_flow, ingestion_flow
 
 app = FastAPI(title="Atlys Analytics Platform — CUJ 1 Ingestion UI & CUJ 2 Analyst Chat")
@@ -179,29 +179,74 @@ def approve_ingestion(req: IngestionRequest):
 
 @app.post("/v1/chat/completions")
 def chat_completions(req: ChatCompletionRequest):
+    messages_list = [{"role": m.role, "content": m.content} for m in req.messages]
+    intent, context_data = conversational_ingestion.detect_chat_intent(messages_list, model=req.model)
     question = req.messages[-1].content
     trace_id = tracing.new_trace("librechat", run_mode="librechat_client")
+    is_instrumentation_model = req.model == "atlys-instrumentation"
 
     with tracing.step(
         "librechat_query_execution",
-        input={"question": question, "model": req.model},
-        metadata={"client": "librechat_client", "model": req.model},
+        input={"question": question, "model": req.model, "intent": intent},
+        metadata={"client": "librechat_client", "model": req.model, "intent": intent},
         run_mode="librechat_client",
     ):
-        result = analysis_flow.run(question=question, spec_id="chat", base_sql=_DEFAULT_BASE_SQL)
+        if is_instrumentation_model:
+            # CUJ 1: Dedicated Instrumentation Engineer
+            if intent == "GREETING":
+                content = conversational_ingestion.INSTRUMENTATION_GREETING_MD
+            elif intent == "LIST_SPECS":
+                content = conversational_ingestion.format_available_specs_card()
+            elif intent == "HITL_APPROVE":
+                table_hint = context_data.get("table_hint")
+                content = conversational_ingestion.handle_hitl_deployment(
+                    table_name=table_hint,
+                    spec_id=None,
+                    history=messages_list,
+                )
+            elif intent == "HITL_REJECT":
+                content = conversational_ingestion.handle_hitl_rejection(table_name=None)
+            elif intent == "INGESTION_PROPOSAL":
+                spec_id = context_data.get("spec_id", "01_express_checkout")
+                table_name = context_data.get("table_name")
+                chdb_client.init_schema()
+                chdb_client.init_base_context()
+                result = ingestion_flow.run(
+                    spec_id=spec_id,
+                    table_name=table_name,
+                    dry_run=True,
+                )
+                content = conversational_ingestion.format_ingestion_proposal_response(result)
+            elif intent == "INGESTION_FOLLOWUP":
+                q = context_data.get("question", question)
+                tbl = context_data.get("table_name")
+                ddl = context_data.get("prior_ddl")
+                content = conversational_ingestion.handle_followup_question(q, tbl, ddl)
+            else:
+                # Analytics query sent to Instrumentation Engineer -> scope notice
+                content = conversational_ingestion.INSTRUMENTATION_SCOPE_NOTICE_MD
+        else:
+            # CUJ 2: Dedicated Product Analyst
+            if intent == "GREETING":
+                content = prompts.GREETING_RESPONSE_MD
+            elif intent in ("INGESTION_PROPOSAL", "LIST_SPECS", "HITL_APPROVE", "INGESTION_FOLLOWUP"):
+                # Ingestion query sent to Product Analyst -> scope notice
+                content = conversational_ingestion.ANALYST_SCOPE_NOTICE_MD
+            else:
+                result = analysis_flow.run(question=question, spec_id="chat", base_sql=_DEFAULT_BASE_SQL)
+                content = (
+                    f"{result['answer_md']}\n\n"
+                    f"_confidence: {result['confidence'].get('score')} · trace: {result['trace_id']}_"
+                )
+
         tracing.span(
             trace_id,
             "chat_completions",
-            {"question": question, "model": req.model},
-            {"answer": result.get("executive_summary", ""), "confidence": result.get("confidence", {})},
-            metadata={"client": "librechat_client"},
+            {"question": question, "model": req.model, "intent": intent},
+            {"content": content[:100]},
+            metadata={"client": "librechat_client", "intent": intent},
             run_mode="librechat_client",
         )
-
-    content = (
-        f"{result['answer_md']}\n\n"
-        f"_confidence: {result['confidence'].get('score')} · trace: {result['trace_id']}_"
-    )
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     created_ts = int(time.time())
 

@@ -79,11 +79,23 @@ pytest tests/test_e2e_rehearsal.py -v
 
 ## 3. Actual Pipeline Execution
 
+### Core Agent Personas & Custodianship Model
+
+The system enforces a **strict Least-Privilege & Data Custodianship Model**:
+
+| Agent Persona | Direct DB / Metadata Access? | Assigned Tools | Architectural Role |
+| :--- | :---: | :--- | :--- |
+| **`Context Librarian`** | ✅ **Sole DB & Metadata Custodian** | • `consult_internal_tables`<br>• `context_diff`<br>• `execute_ddl`<br>• `context_upsert` | **Data Governance Gatekeeper & DB Custodian**: Exclusive custodian of `chDB` (`schema_registry` + `business_context`) and ClickHouse Cloud DDL deployment. Briefs the Instrumentation Engineer with existing table schemas and versions, audits proposed DDL against business rules, manages operator proposals, and executes live DDL + registry sync upon operator approval. |
+| **`Instrumentation Engineer`** | ❌ **Zero Direct DB Access** | • `infer_schema`<br>• `generate_mv`<br>• `explain_schema_rationale` | **Pure ClickHouse Systems Architect**: Operates as a pure design & reasoning engine without direct database access. Receives context briefings from the Context Librarian, computes optimal ClickHouse DDL (`ORDER BY`, `PARTITION BY`, `LowCardinality`, `TTL`), generates `SummingMergeTree` MVs, and delegates the proposed design back to the Context Librarian for auditing and deployment. |
+| **`Product Analyst`** (CUJ 2) | 🔍 **Read-Only Analytics** | • `analytics_compute` (SELECT-only)<br>• `score_confidence` | **Analytics & Diagnostics Scientist**: Obtains domain context and known issues (`K1`–`K7`) through the Context Librarian, executes strictly read-only multi-cut `SELECT` queries against ClickHouse Cloud, evaluates statistical confidence, and delegates finalized insight storage to the Context Librarian. |
+
+---
+
 ### CUJ 1: Ingestion Pipeline (Human-in-the-Loop Gated)
 
 CUJ 1 automates schema inference from product feature specs (`spec.md`) and raw event streams (`events.ndjson`), but enforces a **strict Human-in-the-Loop (HITL) gate**: **human review and authorization is required across all surfaces, even in dry-run mode, and no DDL statement ever executes on ClickHouse Cloud without explicit human confirmation.**
 
-#### Human-in-the-Loop (HITL) Gate Architecture
+#### Multi-Agent Ingestion & Custodianship Architecture
 ```
 Feature Spec (`spec.md`) + Events (`events.ndjson`)
                      │
@@ -305,12 +317,17 @@ print("Multi-cut dimensions:", list(result["cuts"].keys()))
 
 ---
 
-#### 4. Connect to LibreChat (Web UI)
+#### 4. Connect to LibreChat (Separate Dedicated Agent Personas)
 
-A pre-configured LibreChat stack with custom OpenAI-compatible endpoint settings is included in `src/atlys_agentic/librechat/`.
+A pre-configured LibreChat stack is included in `src/atlys_agentic/librechat/librechat.yaml`. The two CUJs are mapped to **two separate, dedicated agent personas** in LibreChat:
+
+| Agent in LibreChat Dropdown | Model Identifier | Dedicated CUJ Scope | Key Capabilities |
+| :--- | :--- | :--- | :--- |
+| **`Atlys Instrumentation Engineer`** | `atlys-instrumentation` | **CUJ 1: Schema Ingestion & Evolution** | • Feature spec discovery (*"Show specs"*)<br>• 6-pillar ClickHouse storage rationale (`ORDER BY`, `PARTITION BY`, `LowCardinality`, `SummingMergeTree`, `TTL`)<br>• Technical follow-up questions & ClickHouse deep dives<br>• Schema amendments (*"Add column promo_code Nullable(String)"*)<br>• In-chat Human-in-the-Loop (HITL) cloud deployment (*"APPROVE <table_name>"*) |
+| **`Atlys Product Analyst`** | `atlys-analyst` | **CUJ 2: Telemetry Diagnostics & Root Cause Analysis** | • Funnel drop-off and conversion rate analysis<br>• Multi-cut segment breakdowns (`device_type`, `geoip_country_code`, `destination`)<br>• Known anomaly correlation (`K1`–`K7`)<br>• Deterministic statistical confidence scoring ($f(N, \Delta, \text{match})$)<br>• Structured PM diagnostic reports |
 
 ##### Step 1: Start the LibreChat Stack
-Make sure the backend service is running on port `8008`, then launch LibreChat and MongoDB with Docker Compose:
+Make sure the backend service is running on host port `8008`, then launch LibreChat and MongoDB with Docker Compose:
 ```bash
 docker compose -f src/atlys_agentic/librechat/docker-compose.librechat.yml up -d
 ```
@@ -318,31 +335,56 @@ docker compose -f src/atlys_agentic/librechat/docker-compose.librechat.yml up -d
 ##### Step 2: Open LibreChat in Your Browser
 - **LibreChat Web UI URL**: **`http://localhost:3080`**
 
-##### Step 3: User Credentials & Registration
-- **First-Time User Registration**:
-  - Registration is enabled (`ALLOW_REGISTRATION=true`) and email verification is disabled (`CHECK_EMAIL_VERIFICATION=false`).
-  - Click **Sign up** on the login screen.
-  - Enter your details:
-    - **Email**: Any email (e.g. `admin@atlys.com` or your personal email)
-    - **Display Name**: `Atlys Admin` (or your name)
-    - **Password**: Any password of your choice (e.g. `admin1234`)
-  - Click **Sign up** and you will be immediately logged into LibreChat.
-- **Subsequent Logins**:
-  - Simply log in with the email and password you created during sign up.
+##### Step 3: Register or Log In
+- On first visit, register a local user account (Registration is enabled: `ALLOW_REGISTRATION=true`, email verification disabled: `CHECK_EMAIL_VERIFICATION=false`).
+- Sign in with your registered credentials.
 
-##### Step 4: Select the Atlys Analyst Model
-1. In the model dropdown at the top-left of the LibreChat chat interface, select **`Atlys Analyst`** (displays as *Atlys Product Analyst* / `atlys-analyst`).
-2. **API Key / Credentials**:
-   - Pre-configured in `src/atlys_agentic/librechat/librechat.yaml`:
-     - **Base URL**: `http://host.docker.internal:8008/v1`
-     - **API Key**: `dummy-key-not-checked` (pre-loaded; you will **not** be prompted to enter an OpenAI API key).
-3. Ask analytical questions (e.g. *"Is there an iOS OTP drop on Express Checkout?"* or *"Analyze purchase conversion across destination countries"*).
-4. The response will stream the synthesized PM report, confidence score, and Langfuse trace link.
+##### Step 4: Select Your Agent in LibreChat
 
-##### Step 5: Stopping LibreChat
-To stop the containers:
-```bash
-docker compose -f src/atlys_agentic/librechat/docker-compose.librechat.yml down
+In the top-left model dropdown, select the agent persona for your task:
+
+###### 🛠️ Option 1: Choose "Atlys Instrumentation Engineer" (CUJ 1 Ingestion)
+- **Discover Specs**: *"What specs are available for ingestion?"*
+- **Propose Schema**: *"Propose schema for 01_express_checkout"*
+  - Returns 6-pillar ClickHouse storage rationale, Table DDL, `SummingMergeTree` Materialized View, and Context Diff Audit.
+- **Ask Follow-Ups**: *"Why did you use SummingMergeTree?"* or *"Why is user_id second in ORDER BY?"*
+- **Modify Schema**: *"Add column promo_code Nullable(String)"*
+- **Authorize Deployment**: Type **`APPROVE express_checkout`** to deploy live to ClickHouse Cloud and snapshot into `chDB.schema_registry`.
+- *(Note: If an analytics question is asked, the agent provides a polite scope notice directing you to switch to the Product Analyst persona).*
+
+###### 📊 Option 2: Choose "Atlys Product Analyst" (CUJ 2 Telemetry & RCA)
+- **Investigate Drops**: *"Is there an iOS OTP drop on Express Checkout during verification?"*
+- **Segment Cuts**: *"Break down Express Checkout conversion by device type and country."*
+- Returns live multi-cut ClickHouse aggregations, known issue correlation (`K1`), and statistical confidence scores.
+- *(Note: If a schema proposal request is asked, the agent provides a polite scope notice directing you to switch to the Instrumentation Engineer persona).*
+
+---
+
+##### LibreChat Endpoint Configuration (`src/atlys_agentic/librechat/librechat.yaml`)
+```yaml
+version: 1.1.5
+cache: true
+endpoints:
+  custom:
+    - name: "Atlys Instrumentation Engineer"
+      apiKey: "dummy-key-not-checked"
+      baseURL: "http://host.docker.internal:8008/v1"
+      models:
+        default: ["atlys-instrumentation"]
+        fetch: false
+      titleConvo: false
+      titleModel: "atlys-instrumentation"
+      modelDisplayLabel: "Atlys Instrumentation Engineer (CUJ 1 Ingestion)"
+
+    - name: "Atlys Product Analyst"
+      apiKey: "dummy-key-not-checked"
+      baseURL: "http://host.docker.internal:8008/v1"
+      models:
+        default: ["atlys-analyst"]
+        fetch: false
+      titleConvo: false
+      titleModel: "atlys-analyst"
+      modelDisplayLabel: "Atlys Product Analyst (CUJ 2 Analytics)"
 ```
 
 ---

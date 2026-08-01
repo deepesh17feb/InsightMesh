@@ -35,3 +35,16 @@ def spec_md(spec_id: str) -> Path:
 
 def events_ndjson(spec_id: str) -> Path:
     return spec_dir(spec_id) / "events.ndjson"
+
+
+def available_spec_ids() -> list[str]:
+    specs = []
+    if SPECS_DIR.exists():
+        for item in sorted(SPECS_DIR.iterdir()):
+            if item.is_dir() and (item / "spec.md").exists():
+                specs.append(item.name)
+    if UNSEEN_SPECS_DIR.exists() and (UNSEEN_SPECS_DIR / "spec.md").exists():
+        if "06_unseen" not in specs:
+            specs.append("06_unseen")
+    return specs or ["01_express_checkout", "02_group_family", "03_coupons", "04_visas_for_digital_nomads", "05_price_drop"]
+

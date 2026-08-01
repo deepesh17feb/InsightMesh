@@ -33,24 +33,23 @@ Based on product scaling needs, the system is explicitly divided into two indepe
 ```mermaid
 flowchart TD
     subgraph CUJ 1: Ingestion Pipeline (Asynchronous / HITL)
-        Dev([Dev/PM]) --> CLI(["run_ingestion.py"])
-        CLI --> CrewIngest[CrewAI: Ingestion Crew]
-        CrewIngest --> IE[Instrumentation Engineer]
-        CrewIngest --> CL_Ingest[Context Librarian]
-        
-        IE -->|1. Drafts DDL| Gate{HITL Gate}
-        Gate -->|Approve| CloudDB[(ClickHouse Cloud)]
-        Gate -->|Approve| chDB[(chDB Metadata)]
+        Dev([Dev/PM]) --> CLI(["run_ingestion.py / LibreChat"])
+        CLI --> CL_Ingest[Context Librarian (Sole DB Custodian)]
+        CL_Ingest <-->|1. Context Lookup| chDB[(chDB Metadata)]
+        CL_Ingest -->|2. Context Briefing| IE[Instrumentation Engineer (No DB Access)]
+        IE -->|3. Proposed 6-Pillar DDL & MV| CL_Ingest
+        CL_Ingest -->|4. Context Diff & Proposal| Gate{HITL Gate}
+        Gate -->|Approve: Context Librarian Deploys| CloudDB[(ClickHouse Cloud)]
+        Gate -->|Approve: Context Librarian Updates| chDB
     end
 
     subgraph CUJ 2: Analyst Interface (Synchronous / Chat)
         PM([PM]) --> LibreChat[LibreChat UI]
-        LibreChat --> CrewAnalyst[CrewAI: Analyst Crew]
-        CrewAnalyst --> PA[Product Analyst]
-        
-        PA <-->|2. Fetch Business Rules| chDB
-        PA <-->|3. Execute SELECT| CloudDB
-        PA -->|4. Return Insight| LibreChat
+        LibreChat --> PA[Product Analyst]
+        PA <-->|5. Fetch Rules & Known Issues (K1-K7)| CL_Analyst[Context Librarian]
+        CL_Analyst <-->|Read business_context| chDB
+        PA <-->|6. Execute Multi-Cut SELECT| CloudDB
+        PA -->|7. Return PM Diagnosis| LibreChat
     end
 ```
 

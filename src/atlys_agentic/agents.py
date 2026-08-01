@@ -65,6 +65,12 @@ def llm() -> LLM:
     return LLM(model=model, is_litellm=True, temperature=temperature)
 
 
+@tool("consult_internal_tables")
+def _consult_internal_tables_tool(spec_id: str, candidate_columns: list[str], table_name: str) -> dict:
+    """Consult chDB schema_registry and business_context to inspect existing tables and determine strategy (CREATE_NEW, ALTER_EXISTING, REUSE_EXISTING)."""
+    return tools.Tool_Consult_Internal_Tables(spec_id, candidate_columns, table_name)
+
+
 @tool("infer_schema")
 def _infer_schema_tool(ndjson_path: str, spec_md_text: str, table_name: str) -> str:
     """Infer a production ClickHouse DDL from an NDJSON event sample and spec text."""
@@ -75,6 +81,12 @@ def _infer_schema_tool(ndjson_path: str, spec_md_text: str, table_name: str) -> 
 def _generate_mv_tool(table_name: str, ddl: str) -> str:
     """Generate a materialized view DDL for a table, if one is justified."""
     return tools.Tool_Generate_MV(table_name, ddl)
+
+
+@tool("explain_schema_rationale")
+def _explain_schema_rationale_tool(table_name: str, ddl: str, mv_ddl: str, consultation: dict, spec_text: str) -> dict:
+    """Explain the 6-pillar ClickHouse storage mechanics rationale (ORDER BY, PARTITION BY, LowCardinality, MV, TTL)."""
+    return tools.Tool_Explain_Schema_Rationale(table_name, ddl, mv_ddl, consultation, spec_text)
 
 
 @tool("execute_ddl")
@@ -182,7 +194,11 @@ def build_instrumentation_engineer() -> Agent:
         role=cfg["role"],
         goal=cfg["goal"],
         backstory=cfg["backstory"].strip(),
-        tools=[_infer_schema_tool, _generate_mv_tool, _execute_ddl_tool],
+        tools=[
+            _infer_schema_tool,
+            _generate_mv_tool,
+            _explain_schema_rationale_tool,
+        ],
         llm=llm(),
         memory=False,
         verbose=cfg.get("verbose", True),
@@ -197,7 +213,12 @@ def build_context_librarian() -> Agent:
         role=cfg["role"],
         goal=cfg["goal"],
         backstory=cfg["backstory"].strip(),
-        tools=[_context_diff_tool, _context_upsert_tool],
+        tools=[
+            _consult_internal_tables_tool,
+            _context_diff_tool,
+            _execute_ddl_tool,
+            _context_upsert_tool,
+        ],
         llm=llm(),
         memory=False,
         verbose=cfg.get("verbose", True),
