@@ -12,8 +12,8 @@ def test_trace_captures_trace_id_and_flushes():
         with tracing.trace("root", input={"x": 1}):
             pass
 
-    mock_client.flush.assert_called_once()
-    assert tracing.trace_url() is not None or tracing._current_trace_id == "trace-abc"
+        mock_client.flush.assert_called_once()
+        assert tracing.trace_url() is not None or tracing._current_trace_id == "trace-abc"
 
 
 def test_trace_url_returns_none_when_no_trace_captured():
