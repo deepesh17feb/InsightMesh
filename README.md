@@ -64,19 +64,19 @@ pytest -v
 ### Run Tests by Component
 ```bash
 # 1. Deterministic Agent Tools (schema inference, MVs, DDL execute, context diff/upsert, confidence)
-pytest atlys_agentic/tests/test_tools.py -v
+pytest src/atlys_agentic/tests/test_tools.py -v
 
 # 2. Agent Personas & Memory-Free Configuration
-pytest atlys_agentic/tests/test_agents.py -v
+pytest src/atlys_agentic/tests/test_agents.py -v
 
 # 3. CUJ 1 Ingestion Flow & CLI (HITL gate approve/reject paths)
-pytest atlys_agentic/tests/test_ingestion_flow.py atlys_agentic/tests/test_run_ingestion.py -v
+pytest src/atlys_agentic/tests/test_ingestion_flow.py src/atlys_agentic/tests/test_run_ingestion.py -v
 
 # 4. CUJ 2 Analyst Flow & FastAPI Chat Backend
-pytest atlys_agentic/tests/test_analysis_flow.py atlys_agentic/tests/test_chat_backend.py -v
+pytest src/atlys_agentic/tests/test_analysis_flow.py src/atlys_agentic/tests/test_chat_backend.py -v
 
 # 5. Full End-to-End Pipeline Rehearsal (Ingestion -> HITL -> chDB -> Multi-Cut Analysis -> Viz)
-pytest atlys_agentic/tests/test_e2e_rehearsal.py -v
+pytest src/atlys_agentic/tests/test_e2e_rehearsal.py -v
 ```
 
 ---
