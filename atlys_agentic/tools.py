@@ -219,3 +219,34 @@ def Tool_Context_Diff(new_table: str, new_columns: list[str]) -> dict:
     additions = [f"{new_table}.{col}" for col in new_columns]
 
     return {"additions": additions, "conflicts": conflicts, "gaps": gaps}
+
+def Tool_Context_Upsert(section: str, key: str, definition: str, agent: str, trace_id: str) -> int:
+    existing_version = chdb_client.run(
+        f"SELECT max(version) AS v FROM business_context WHERE key = '{key}'"
+    )
+    version = (existing_version[0]["v"] or 0) + 1 if existing_version and existing_version[0]["v"] is not None else 1
+
+    before_rows = chdb_client.run(
+        f"SELECT definition FROM business_context WHERE key = '{key}' ORDER BY version DESC LIMIT 1"
+    )
+    before = before_rows[0]["definition"] if before_rows else ""
+
+    definition_escaped = definition.replace("'", "''")
+    section_escaped = section.replace("'", "''")
+    key_escaped = key.replace("'", "''")
+    next_id = version * 100000 + hash(key) % 100000  # cheap unique-enough id, not exposed to callers
+
+    chdb_client.run(
+        f"""INSERT INTO business_context VALUES
+        ({next_id}, '{section_escaped}', '{key_escaped}', '{definition_escaped}',
+         {version}, now(), '{agent}', 'active')""",
+        fmt="CSV",
+    )
+    after_escaped = definition.replace("'", "''")
+    before_escaped = before.replace("'", "''")
+    chdb_client.run(
+        f"""INSERT INTO context_changelog VALUES
+        (now(), 'context_upsert', '{before_escaped}', '{after_escaped}', '{agent}', '{trace_id}')""",
+        fmt="CSV",
+    )
+    return version

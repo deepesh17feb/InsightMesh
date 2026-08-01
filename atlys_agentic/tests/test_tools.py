@@ -198,3 +198,30 @@ def test_context_diff_flags_new_columns_as_additions():
         result = tools.Tool_Context_Diff("express_checkout", ["shown_amount", "otp_attempts"])
     assert "express_checkout.shown_amount" in result["additions"]
     assert "express_checkout.otp_attempts" in result["additions"]
+
+def test_context_upsert_increments_version_and_writes_changelog():
+    calls = []
+
+    def fake_run(sql, fmt="JSON"):
+        calls.append(sql)
+        if sql.strip().startswith("SELECT max(version)"):
+            return [{"v": 2}]
+        if sql.strip().startswith("SELECT definition FROM business_context WHERE key"):
+            return [{"definition": "old definition"}]
+        return None
+
+    with patch("atlys_agentic.tools.chdb_client.run", side_effect=fake_run):
+        version = tools.Tool_Context_Upsert(
+            section="Metric definitions",
+            key="conversion_rate",
+            definition="purchases / application_started (canonical, per Context Agent)",
+            agent="context_librarian",
+            trace_id="trace-123",
+        )
+    assert version == 3
+    insert_calls = [c for c in calls if c.strip().startswith("INSERT INTO business_context")]
+    changelog_calls = [c for c in calls if c.strip().startswith("INSERT INTO context_changelog")]
+    assert len(insert_calls) == 1
+    assert len(changelog_calls) == 1
+    assert "old definition" in changelog_calls[0]
+    assert "trace-123" in changelog_calls[0]
