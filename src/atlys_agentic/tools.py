@@ -376,11 +376,33 @@ def Tool_Explain_Schema_Rationale(
     }
 
 
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_identifier(name: str, *, what: str = "identifier") -> str:
+    """Guard against SQL-identifier injection at DDL/DROP interpolation
+    points: table names can't be bind-parameters (ClickHouse has no
+    identifier binding), so allowlist the character set instead."""
+    if not _IDENTIFIER_RE.match(name or ""):
+        raise ValueError(f"Unsafe {what}: {name!r} is not a valid SQL identifier")
+    return name
+
+
+def _assert_select_only(sql: str) -> str:
+    """Shared read-only guard: reused by every path that pushes SQL to
+    ClickHouse/chDB on behalf of the read-only Product Analyst persona,
+    including the events.ndjson fallback path, not just the primary tool."""
+    if not re.match(r"^\s*SELECT\b", sql, re.IGNORECASE):
+        raise ValueError("SELECT-only: refusing non-SELECT statement")
+    return sql
+
+
 def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str) -> dict:
-    """Execute DDL on ClickHouse Cloud, mirror to chDB schema_registry with a
-    monotonically increasing version per table. On failure, drop whatever
+    """Execute DDL on ClickHouse Cloud only. On failure, drop whatever
     partial object exists and report the error instead of leaving Cloud in a
-    half-created state."""
+    half-created state. Does not touch chDB — see Tool_Register_Schema_Version
+    for the separate, separately-reportable registry write."""
+    _validate_identifier(table_name, what="table_name")
     try:
         ch_client.command(ddl)
     except Exception as exc:  # noqa: BLE001 - deliberately broad: any Cloud DDL failure must roll back
@@ -389,7 +411,15 @@ def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str) -> dict:
         except Exception:
             pass
         return {"status": "rolled_back", "table": table_name, "version": None, "error": str(exc)}
+    return {"status": "ok", "table": table_name, "version": None, "error": None}
 
+
+def Tool_Register_Schema_Version(ddl: str, table_name: str, spec_id: str) -> dict:
+    """Mirror an already-executed DDL into chDB.schema_registry with a
+    monotonically increasing version per table. Separate from
+    Tool_Execute_DDL so a registry-write failure is never conflated with a
+    Cloud DDL failure — the two have different failure domains."""
+    _validate_identifier(table_name, what="table_name")
     chdb_client.init_schema()
     existing = chdb_client.run(
         f'SELECT max(version) AS v FROM schema_registry WHERE "table" = \'{table_name}\''
@@ -408,8 +438,7 @@ def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str) -> dict:
 def Tool_Analytics_Compute(select_sql: str) -> dict:
     """Push all aggregation into ClickHouse via ClickHouse MCP; never let raw rows or non-SELECT
     statements reach the caller (Analyst path is read-only by construction)."""
-    if not re.match(r"^\s*SELECT\b", select_sql, re.IGNORECASE):
-        raise ValueError("Tool_Analytics_Compute is SELECT-only")
+    _assert_select_only(select_sql)
     rows = clickhouse_mcp.execute_query(select_sql)
     return {"rows": rows}
 
@@ -469,19 +498,17 @@ def Tool_Context_Diff(new_table: str, new_columns: list[str]) -> dict:
 
 
 def Tool_Context_Upsert(section: str, key: str, definition: str, agent: str, trace_id: str) -> int:
+    """Write a new versioned business_context row only. Does not touch
+    context_changelog — see Tool_Append_Context_Changelog for the separate,
+    separately-reportable audit-trail write."""
+    key_escaped = key.replace("'", "''")
     existing_version = chdb_client.run(
-        f"SELECT max(version) AS v FROM business_context WHERE key = '{key}'"
+        f"SELECT max(version) AS v FROM business_context WHERE key = '{key_escaped}'"
     )
     version = (existing_version[0]["v"] or 0) + 1 if existing_version and existing_version[0]["v"] is not None else 1
 
-    before_rows = chdb_client.run(
-        f"SELECT definition FROM business_context WHERE key = '{key}' ORDER BY version DESC LIMIT 1"
-    )
-    before = before_rows[0]["definition"] if before_rows else ""
-
     definition_escaped = definition.replace("'", "''")
     section_escaped = section.replace("'", "''")
-    key_escaped = key.replace("'", "''")
     next_id = version * 100000 + hash(key) % 100000
 
     chdb_client.run(
@@ -490,14 +517,32 @@ def Tool_Context_Upsert(section: str, key: str, definition: str, agent: str, tra
          {version}, now(), '{agent}', 'active')""",
         fmt="CSV",
     )
-    after_escaped = definition.replace("'", "''")
+    return version
+
+
+def Tool_Append_Context_Changelog(key: str, before: str, after: str, agent: str, trace_id: str) -> None:
+    """Append one immutable audit-trail row to context_changelog. Separate
+    from Tool_Context_Upsert so a changelog-append failure is never conflated
+    with a business_context write failure."""
     before_escaped = before.replace("'", "''")
+    after_escaped = after.replace("'", "''")
+    agent_escaped = agent.replace("'", "''")
+    trace_id_escaped = trace_id.replace("'", "''")
     chdb_client.run(
         f"""INSERT INTO context_changelog VALUES
-        (now(), 'context_upsert', '{before_escaped}', '{after_escaped}', '{agent}', '{trace_id}')""",
+        (now(), 'context_upsert', '{before_escaped}', '{after_escaped}', '{agent_escaped}', '{trace_id_escaped}')""",
         fmt="CSV",
     )
-    return version
+
+
+def _latest_context_definition(key: str) -> str:
+    """Look up the current definition for `key` before it's overwritten —
+    used by callers to build Tool_Append_Context_Changelog's `before` arg."""
+    key_escaped = key.replace("'", "''")
+    rows = chdb_client.run(
+        f"SELECT definition FROM business_context WHERE key = '{key_escaped}' ORDER BY version DESC LIMIT 1"
+    )
+    return rows[0]["definition"] if rows else ""
 
 
 def _sample_size_component(n: int) -> float:

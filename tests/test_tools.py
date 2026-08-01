@@ -144,15 +144,29 @@ def test_generate_mv_skips_when_no_segment_column_present():
     assert mv == ""
 
 
-def test_execute_ddl_success_writes_versioned_schema_registry_row():
+def test_execute_ddl_success_does_not_touch_chdb():
     from unittest.mock import patch
     ddl = "CREATE TABLE IF NOT EXISTS t1 (timestamp DateTime, user_id String) ENGINE=MergeTree ORDER BY (timestamp, user_id)"
     with patch("atlys_agentic.tools.ch_client.command") as mock_command, \
-         patch("atlys_agentic.tools.chdb_client.init_schema"), \
          patch("atlys_agentic.tools.chdb_client.run") as mock_chdb_run:
-        mock_chdb_run.side_effect = [[], None]
         result = tools.Tool_Execute_DDL(ddl, "t1", spec_id="01_express_checkout")
     mock_command.assert_called_once_with(ddl)
+    mock_chdb_run.assert_not_called()
+    assert result == {"status": "ok", "table": "t1", "version": None, "error": None}
+
+
+def test_execute_ddl_rejects_unsafe_table_name():
+    with pytest.raises(ValueError, match="identifier"):
+        tools.Tool_Execute_DDL("CREATE TABLE x (...)", "t1; DROP TABLE users", spec_id="01_express_checkout")
+
+
+def test_register_schema_version_writes_versioned_schema_registry_row():
+    from unittest.mock import patch
+    ddl = "CREATE TABLE IF NOT EXISTS t1 (timestamp DateTime, user_id String) ENGINE=MergeTree ORDER BY (timestamp, user_id)"
+    with patch("atlys_agentic.tools.chdb_client.init_schema"), \
+         patch("atlys_agentic.tools.chdb_client.run") as mock_chdb_run:
+        mock_chdb_run.side_effect = [[], None]
+        result = tools.Tool_Register_Schema_Version(ddl, "t1", spec_id="01_express_checkout")
     assert result == {"status": "ok", "table": "t1", "version": 1, "error": None}
 
 
@@ -207,7 +221,7 @@ def test_context_diff_flags_new_columns_as_additions():
     assert "express_checkout.otp_attempts" in result["additions"]
 
 
-def test_context_upsert_increments_version_and_writes_changelog():
+def test_context_upsert_increments_version_without_touching_changelog():
     from unittest.mock import patch
     calls = []
 
@@ -215,8 +229,6 @@ def test_context_upsert_increments_version_and_writes_changelog():
         calls.append(sql)
         if sql.strip().startswith("SELECT max(version)"):
             return [{"v": 2}]
-        if sql.strip().startswith("SELECT definition FROM business_context WHERE key"):
-            return [{"definition": "old definition"}]
         return None
 
     with patch("atlys_agentic.tools.chdb_client.run", side_effect=fake_run):
@@ -231,9 +243,49 @@ def test_context_upsert_increments_version_and_writes_changelog():
     insert_calls = [c for c in calls if c.strip().startswith("INSERT INTO business_context")]
     changelog_calls = [c for c in calls if c.strip().startswith("INSERT INTO context_changelog")]
     assert len(insert_calls) == 1
+    assert len(changelog_calls) == 0
+
+
+def test_context_upsert_escapes_key_in_select_lookup():
+    from unittest.mock import patch
+    calls = []
+
+    def fake_run(sql, fmt="JSON"):
+        calls.append(sql)
+        return []
+
+    with patch("atlys_agentic.tools.chdb_client.run", side_effect=fake_run):
+        tools.Tool_Context_Upsert(
+            section="s", key="o'brien", definition="d", agent="a", trace_id="t",
+        )
+    select_call = next(c for c in calls if c.strip().startswith("SELECT max(version)"))
+    assert "o''brien" in select_call
+    assert "o'brien'" not in select_call.replace("o''brien", "")
+
+
+def test_append_context_changelog_writes_before_after_and_trace_id():
+    from unittest.mock import patch
+    calls = []
+
+    def fake_run(sql, fmt="JSON"):
+        calls.append(sql)
+        return None
+
+    with patch("atlys_agentic.tools.chdb_client.run", side_effect=fake_run):
+        tools.Tool_Append_Context_Changelog(
+            key="conversion_rate", before="old definition", after="new definition",
+            agent="context_librarian", trace_id="trace-123",
+        )
+    changelog_calls = [c for c in calls if c.strip().startswith("INSERT INTO context_changelog")]
     assert len(changelog_calls) == 1
     assert "old definition" in changelog_calls[0]
     assert "trace-123" in changelog_calls[0]
+
+
+def test_latest_context_definition_returns_empty_when_no_rows():
+    from unittest.mock import patch
+    with patch("atlys_agentic.tools.chdb_client.run", return_value=[]):
+        assert tools._latest_context_definition("nonexistent_key") == ""
 
 
 def test_confidence_high_for_large_n_large_effect_matching_known_issue():

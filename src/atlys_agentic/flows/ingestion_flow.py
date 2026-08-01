@@ -1,41 +1,20 @@
+"""CUJ 1 — Feature Ingestion & Context Audit Pipeline.
+
+A deterministic, hand-sequenced pipeline: every step below is a plain
+Python method called in a fixed order by `run()`. There is no agentic
+tool-selection loop and no CrewAI Flow event graph — narration calls
+(`narration.narrate`) produce PM-readable prose from tool output, but the
+pipeline's control flow never depends on an LLM's decision. This is a
+deliberate choice for a path that is one `APPROVE` away from mutating
+production ClickHouse Cloud schema: determinism and auditability outrank
+agent autonomy here. See docs/cuj_architecture_v2.md.
+"""
 import os
-from typing import Callable, Generic, TypeVar
+from typing import Callable
 
 from pydantic import BaseModel
 
-from atlys_agentic import agents, paths, prompts, tools, tracing
-
-T = TypeVar("T")
-
-try:
-    from crewai.flow.flow import Flow as CrewAIFlow, listen, router, start
-except ImportError:  # pragma: no cover
-    def start():
-        def decorator(fn):
-            fn._flow_step = "start"
-            return fn
-        return decorator
-
-    def listen(target=None):
-        def decorator(fn):
-            fn._flow_step = "listen"
-            fn._listen_target = target
-            return fn
-        return decorator
-
-    def router(target=None):
-        def decorator(fn):
-            fn._flow_step = "router"
-            fn._router_target = target
-            return fn
-        return decorator
-
-    class CrewAIFlow(Generic[T]):  # type: ignore
-        def __init__(self):
-            self.state = None
-
-        def kickoff(self, inputs: dict = None):
-            pass
+from atlys_agentic import agents, narration, paths, prompts, tools, tracing
 
 
 class IngestionState(BaseModel):
@@ -52,24 +31,14 @@ class IngestionState(BaseModel):
     reasoning: dict = {}
 
 
-class IngestionFlow(CrewAIFlow[IngestionState]):
+class IngestionFlow:
     input_fn: Callable[[str], str] = staticmethod(input)
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # crewai's typed Flow (Flow[IngestionState]) auto-creates `state` from the
-        # generic parameter and exposes it as a read-only property (no setter).
-        # Assigning self.state here raises AttributeError on modern crewai; only
-        # initialise manually for the no-crewai fallback base class.
-        if getattr(self, "state", None) is None:
-            try:
-                self.state = IngestionState()
-            except AttributeError:
-                pass
+    def __init__(self):
+        self.state = IngestionState()
 
-    @start()
     def instrumentation_step(self):
-        """Step 1: Instrumentation Agent consults Context Librarian to inspect chDB/ClickHouse metadata, then designs schema, MV, and 6-pillar decision."""
+        """Step 1: consult existing chDB/ClickHouse metadata, then design schema, MV, and 6-pillar decision."""
         mode = "dry_run" if self.state.dry_run else "live_run"
         self.state.trace_id = tracing.new_trace(self.state.spec_id, run_mode=mode)
         ndjson_path = paths.events_ndjson(self.state.spec_id)
@@ -77,55 +46,33 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
         if not self.state.table_name:
             self.state.table_name = tools.Tool_Infer_Table_Name(self.state.spec_id, spec_text)
 
-        # 1. Consult Context Librarian for existing chDB and ClickHouse metadata
-        context_librarian = agents.build_context_librarian()
+        librarian_cfg = agents.get_role_config("context_librarian")
+        engineer_cfg = agents.get_role_config("instrumentation_engineer")
+
+        # 1. Consult existing chDB and ClickHouse metadata
         preliminary_cols = []
         self.state.table_consultation = tools.Tool_Consult_Internal_Tables(
             self.state.spec_id, preliminary_cols, self.state.table_name
         )
 
-        api_key = (
-            os.environ.get("GEMINI_API_KEY", "")
-            or os.environ.get("GOOGLE_API_KEY", "")
-            or os.environ.get("OPENAI_API_KEY", "")
-        ).strip()
-        model_name = os.environ.get("LLM_MODEL", "gemini/gemini-2.5-flash")
+        narration.narrate(
+            librarian_cfg,
+            (
+                f"Incoming Feature Spec: '{self.state.spec_id}' (Target Table: '{self.state.table_name}')\n"
+                f"Consultation data from schema_registry & business_context:\n"
+                f"{self.state.table_consultation}\n\n"
+                f"Summarize the existing table versions, column overlap, and known metric rules for the Instrumentation Engineer."
+            ),
+            run_mode=mode,
+            span_name="context_librarian::consult_context",
+            trace_id=self.state.trace_id,
+        )
 
-        # Context Librarian provides existing schema catalog & metric definitions
-        if api_key and not os.environ.get("PYTEST_CURRENT_TEST"):
-            try:
-                import litellm
-                librarian_prompt = (
-                    f"You are the {context_librarian.role}.\n"
-                    f"Goal: {context_librarian.goal}\n\n"
-                    f"Incoming Feature Spec: '{self.state.spec_id}' (Target Table: '{self.state.table_name}')\n"
-                    f"Consultation data from schema_registry & business_context:\n"
-                    f"{self.state.table_consultation}\n\n"
-                    f"Summarize the existing table versions, column overlap, and known metric rules for the Instrumentation Engineer."
-                )
-                resp = litellm.completion(
-                    model=model_name,
-                    messages=[{"role": "user", "content": librarian_prompt}],
-                    api_key=api_key,
-                    temperature=0.0,
-                )
-                librarian_context_brief = resp.choices[0].message.content.strip()
-                tracing.generation(
-                    name="context_librarian::consult_context",
-                    model=model_name,
-                    input={"spec_id": self.state.spec_id, "table": self.state.table_name},
-                    output=librarian_context_brief,
-                    metadata={"agent": "context_librarian", "role": context_librarian.role},
-                    run_mode=mode,
-                )
-            except Exception:
-                pass
-
-        # 2. Instrumentation Engineer infers production ClickHouse DDL & Materialized View using Context Librarian's catalog briefing
+        # 2. Infer production ClickHouse DDL & Materialized View
         self.state.ddl = tools.Tool_Infer_Schema(ndjson_path, spec_text, self.state.table_name)
         self.state.mv_ddl = tools.Tool_Generate_MV(self.state.table_name, self.state.ddl)
 
-        # 3. Grounded consultation with full inferred column set
+        # 3. Grounded consultation with the full inferred column set
         cols = tools._columns_from_ddl(self.state.ddl)
         self.state.table_consultation = tools.Tool_Consult_Internal_Tables(
             self.state.spec_id, cols, self.state.table_name
@@ -138,52 +85,24 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
             spec_text,
         )
 
-        # 4. Dynamic LLM Schema Architectural Decision by Instrumentation Engineer
-        instrumentation_engineer = agents.build_instrumentation_engineer()
-        if api_key and not os.environ.get("PYTEST_CURRENT_TEST"):
-            try:
-                import litellm
-                prompt = prompts.build_instrumentation_engineer_prompt(
-                    spec_id=self.state.spec_id,
-                    table_name=self.state.table_name,
-                    ddl=self.state.ddl,
-                    strategy=self.state.table_consultation.get("strategy", "CREATE_NEW"),
-                    recommendation=self.state.table_consultation.get("recommendation", ""),
-                )
-                resp = litellm.completion(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": f"You are the {instrumentation_engineer.role}. {instrumentation_engineer.backstory}"},
-                        {"role": "user", "content": prompt},
-                    ],
-                    api_key=api_key,
-                    temperature=0.0,
-                )
-                llm_reasoning = resp.choices[0].message.content.strip()
-                if llm_reasoning:
-                    self.state.reasoning["high_level_summary"] = llm_reasoning
-                    self.state.reasoning["llm_architectural_decision"] = llm_reasoning
-
-                usage = {
-                    "prompt_tokens": getattr(getattr(resp, "usage", None), "prompt_tokens", 0),
-                    "completion_tokens": getattr(getattr(resp, "usage", None), "completion_tokens", 0),
-                }
-                tracing.generation(
-                    name="instrumentation_engineer::schema_design",
-                    model=model_name,
-                    input={"prompt": prompt, "spec_id": self.state.spec_id},
-                    output=llm_reasoning,
-                    usage_details=usage,
-                    metadata={
-                        "agent": "instrumentation_engineer",
-                        "role": instrumentation_engineer.role,
-                        "spec_id": self.state.spec_id,
-                        "table": self.state.table_name,
-                    },
-                    run_mode=mode,
-                )
-            except Exception:
-                pass
+        # 4. Narrated architectural decision
+        design_prompt = prompts.build_instrumentation_engineer_prompt(
+            spec_id=self.state.spec_id,
+            table_name=self.state.table_name,
+            ddl=self.state.ddl,
+            strategy=self.state.table_consultation.get("strategy", "CREATE_NEW"),
+            recommendation=self.state.table_consultation.get("recommendation", ""),
+        )
+        llm_reasoning = narration.narrate(
+            engineer_cfg,
+            design_prompt,
+            run_mode=mode,
+            span_name="instrumentation_engineer::schema_design",
+            trace_id=self.state.trace_id,
+        )
+        if llm_reasoning:
+            self.state.reasoning["high_level_summary"] = llm_reasoning
+            self.state.reasoning["llm_architectural_decision"] = llm_reasoning
 
         tracing.span(
             self.state.trace_id,
@@ -192,88 +111,46 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
             {
                 "ddl": self.state.ddl,
                 "table_strategy": self.state.table_consultation.get("strategy"),
-                "context_consulted_via": context_librarian.role,
-                "agent": instrumentation_engineer.role,
+                "context_consulted_via": librarian_cfg["role"],
+                "agent": engineer_cfg["role"],
             },
             run_mode=mode,
         )
         return self.state.ddl
 
-    def infer_schema(self):
-        """Backward-compatible alias for instrumentation_step."""
-        return self.instrumentation_step()
-
-    @listen(instrumentation_step)
     def context_step(self):
-        """Step 2: Context Agent receives Instrumentation output, runs diff on chDB, and audits integrity."""
+        """Step 2: diff proposed schema against chDB business_context and audit integrity."""
+        mode = "dry_run" if self.state.dry_run else "live_run"
         columns = tools._columns_from_ddl(self.state.ddl)
         self.state.diff_result = tools.Tool_Context_Diff(self.state.table_name, columns)
 
-        # Dynamic LLM Context Librarian Semantic Diff & Integrity Review
-        context_librarian = agents.build_context_librarian()
-        api_key = (
-            os.environ.get("GEMINI_API_KEY", "")
-            or os.environ.get("GOOGLE_API_KEY", "")
-            or os.environ.get("OPENAI_API_KEY", "")
-        ).strip()
-        model_name = os.environ.get("LLM_MODEL", "gemini/gemini-2.5-flash")
-        if api_key and not os.environ.get("PYTEST_CURRENT_TEST"):
-            try:
-                import litellm
-                diff = self.state.diff_result or {}
-                prompt = prompts.build_context_librarian_prompt(
-                    spec_id=self.state.spec_id,
-                    table_name=self.state.table_name,
-                    additions=diff.get("additions", []),
-                    conflicts=diff.get("conflicts", []),
-                    gaps=diff.get("gaps", []),
-                )
-                resp = litellm.completion(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": f"You are the {context_librarian.role}. {context_librarian.backstory}"},
-                        {"role": "user", "content": prompt},
-                    ],
-                    api_key=api_key,
-                    temperature=0.0,
-                )
-                librarian_summary = resp.choices[0].message.content.strip()
-                if librarian_summary:
-                    self.state.diff_result["llm_integrity_audit"] = librarian_summary
-
-                usage = {
-                    "prompt_tokens": getattr(getattr(resp, "usage", None), "prompt_tokens", 0),
-                    "completion_tokens": getattr(getattr(resp, "usage", None), "completion_tokens", 0),
-                }
-                tracing.generation(
-                    name="context_librarian::context_audit",
-                    model=model_name,
-                    input={"prompt": prompt, "spec_id": self.state.spec_id},
-                    output=librarian_summary,
-                    usage_details=usage,
-                    metadata={
-                        "agent": "context_librarian",
-                        "role": context_librarian.role,
-                        "spec_id": self.state.spec_id,
-                        "table": self.state.table_name,
-                    },
-                    run_mode="dry_run" if self.state.dry_run else "live_run",
-                )
-            except Exception:
-                pass
+        librarian_cfg = agents.get_role_config("context_librarian")
+        diff = self.state.diff_result or {}
+        audit_prompt = prompts.build_context_librarian_prompt(
+            spec_id=self.state.spec_id,
+            table_name=self.state.table_name,
+            additions=diff.get("additions", []),
+            conflicts=diff.get("conflicts", []),
+            gaps=diff.get("gaps", []),
+        )
+        librarian_summary = narration.narrate(
+            librarian_cfg,
+            audit_prompt,
+            run_mode=mode,
+            span_name="context_librarian::context_audit",
+            trace_id=self.state.trace_id,
+        )
+        if librarian_summary:
+            self.state.diff_result["llm_integrity_audit"] = librarian_summary
 
         tracing.span(
             self.state.trace_id,
             "context_step",
             {"table": self.state.table_name, "dry_run": self.state.dry_run},
-            {"diff": self.state.diff_result, "agent": context_librarian.role},
-            run_mode="dry_run" if self.state.dry_run else "live_run",
+            {"diff": self.state.diff_result, "agent": librarian_cfg["role"]},
+            run_mode=mode,
         )
         return self.state.diff_result
-
-    def dry_run_audit(self):
-        """Backward-compatible alias for context_step."""
-        return self.context_step()
 
     def format_proposal_summary(self) -> str:
         """Format the complete Instrumentation Engineer decision breakdown and context diff for operator review."""
@@ -333,14 +210,11 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
         ])
         return "\n".join(summary_lines)
 
-    @listen(context_step)
     def human_gate(self):
-        """Step 3: Human-in-the-Loop review presenting complete proposal."""
-        # Ensure context diff has executed before presenting to operator
+        """Step 3: Human-in-the-Loop review presenting the complete proposal. Hard stop — only the literal string 'APPROVE' passes."""
         if not self.state.diff_result:
             self.context_step()
 
-        # Always output the full Instrumentation Engineer decision rationale and proposed schema
         print("\n" + self.format_proposal_summary())
 
         if self.state.dry_run:
@@ -372,26 +246,31 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
                 run_mode="live_run",
             )
 
-    @router(human_gate)
-    def route_gate(self):
-        """Step 4: Route based on operator authorization."""
+    def route_gate(self) -> str:
+        """Step 4: route based on operator authorization."""
         return "approved" if self.state.approved else "rejected"
 
-    @listen("approved")
     def execute_and_audit(self):
-        """Step 5a: Context Librarian (Sole DB Custodian) executes DDL on ClickHouse Cloud and synchronizes chDB."""
-        context_librarian = agents.build_context_librarian()
-        self.state.ddl_result = tools.Tool_Execute_DDL(self.state.ddl, self.state.table_name, self.state.spec_id)
+        """Step 5a: execute DDL on ClickHouse Cloud, register the schema version, and sync business_context.
+        Each write is a separate tool call so a partial failure is attributable to the write that actually failed."""
+        ddl_result = tools.Tool_Execute_DDL(self.state.ddl, self.state.table_name, self.state.spec_id)
+        if ddl_result.get("status") == "ok":
+            registry_result = tools.Tool_Register_Schema_Version(self.state.ddl, self.state.table_name, self.state.spec_id)
+            ddl_result["version"] = registry_result.get("version")
+        self.state.ddl_result = ddl_result
         tracing.span(
             self.state.trace_id,
             "execute_ddl",
-            {"table": self.state.table_name, "custodian": context_librarian.role},
+            {"table": self.state.table_name},
             self.state.ddl_result,
             run_mode="live_run",
         )
 
         if self.state.mv_ddl and self.state.ddl_result.get("status") == "ok":
-            tools.Tool_Execute_DDL(self.state.mv_ddl, f"{self.state.table_name}_daily_mv", self.state.spec_id)
+            mv_table = f"{self.state.table_name}_daily_mv"
+            mv_result = tools.Tool_Execute_DDL(self.state.mv_ddl, mv_table, self.state.spec_id)
+            if mv_result.get("status") == "ok":
+                tools.Tool_Register_Schema_Version(self.state.mv_ddl, mv_table, self.state.spec_id)
 
         if not self.state.diff_result:
             columns = tools._columns_from_ddl(self.state.ddl)
@@ -399,7 +278,7 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
             tracing.span(
                 self.state.trace_id,
                 "context_diff",
-                {"table": self.state.table_name, "custodian": context_librarian.role},
+                {"table": self.state.table_name},
                 self.state.diff_result,
                 run_mode="live_run",
             )
@@ -408,10 +287,19 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
                 table, col = addition.split(".", 1)
             else:
                 table, col = self.state.table_name, addition
+            definition = f"New column from {self.state.spec_id}: {col} on {table}."
+            before = tools._latest_context_definition(addition)
             tools.Tool_Context_Upsert(
                 section="Event tables",
                 key=addition,
-                definition=f"New column from {self.state.spec_id}: {col} on {table}.",
+                definition=definition,
+                agent="context_librarian",
+                trace_id=self.state.trace_id,
+            )
+            tools.Tool_Append_Context_Changelog(
+                key=addition,
+                before=before,
+                after=definition,
                 agent="context_librarian",
                 trace_id=self.state.trace_id,
             )
@@ -437,7 +325,6 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
         )
         print(f"\n❌ Dry-run proposal review for '{self.state.table_name}' aborted by operator.")
 
-    @listen("rejected")
     def abort(self):
         tracing.span(
             self.state.trace_id,
@@ -474,9 +361,8 @@ def run(
         input={"spec_id": spec_id, "table_name": table_name, "dry_run": dry_run},
         run_mode=mode,
     ):
-        # Step through the flow sequence deterministically
-        flow.infer_schema()
-        flow.dry_run_audit()
+        flow.instrumentation_step()
+        flow.context_step()
         flow.human_gate()
         branch = flow.route_gate()
         if branch == "approved":

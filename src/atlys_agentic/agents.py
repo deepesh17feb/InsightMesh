@@ -188,6 +188,13 @@ def load_agents_config() -> dict:
     return _DEFAULT_AGENTS_CONFIG
 
 
+def get_role_config(name: str) -> dict:
+    """Return a persona's role/goal/backstory dict without building a full
+    crewai.Agent — used by pipeline steps that only need prompt-seeding
+    metadata for a narration call, not an agentic tool-calling loop."""
+    return load_agents_config().get(name, _DEFAULT_AGENTS_CONFIG[name])
+
+
 def build_instrumentation_engineer() -> Agent:
     cfg = load_agents_config().get("instrumentation_engineer", _DEFAULT_AGENTS_CONFIG["instrumentation_engineer"])
     return Agent(

@@ -21,7 +21,18 @@ def test_all_three_agents_are_memory_free():
 def test_instrumentation_engineer_has_schema_tools():
     agent = agents.build_instrumentation_engineer()
     tool_names = {t.name for t in agent.tools}
-    assert {"infer_schema", "generate_mv", "execute_ddl"} <= tool_names
+    # Zero-DB-access persona (docs/cuj_architecture.md): execute_ddl must
+    # NOT be reachable from this agent's tool list.
+    assert {"infer_schema", "generate_mv"} <= tool_names
+    assert "execute_ddl" not in tool_names
+
+
+def test_get_role_config_returns_plain_dict_without_building_agent():
+    for name in ("instrumentation_engineer", "context_librarian", "product_analyst"):
+        cfg = agents.get_role_config(name)
+        assert isinstance(cfg, dict)
+        assert len(cfg["role"]) > 0
+        assert len(cfg["backstory"]) > 0
 
 
 def test_context_librarian_has_context_tools():
