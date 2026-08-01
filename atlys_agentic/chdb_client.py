@@ -50,15 +50,61 @@ _SCHEMA_DDL = [
 ]
 
 
+import sqlite3
+
+def _get_sqlite_conn():
+    paths.CHDB_PATH.mkdir(parents=True, exist_ok=True)
+    db_file = paths.CHDB_PATH / "metadata.sqlite"
+    conn = sqlite3.connect(str(db_file), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _run_sqlite_fallback(sql: str, fmt: str = "JSON"):
+    conn = _get_sqlite_conn()
+    clean = sql
+    if clean.strip().upper() == "SHOW TABLES":
+        clean = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    elif clean.strip().upper().startswith("CREATE TABLE"):
+        clean = re.sub(r"\)\s*ENGINE\s*=.*$", ")", clean, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r"\bUInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\bInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\bFloat\d+\b", "REAL", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\bDateTime\b", "TEXT", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\bString\b", "TEXT", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\bLowCardinality\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\bNullable\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\bUUID\b", "TEXT", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\btable\s+TEXT\b", '"table" TEXT', clean, flags=re.IGNORECASE)
+
+    clean = re.sub(r"\bnow\(\)", "datetime('now')", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\bcount\(\)", "count(*)", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\bWHERE\s+table\b", 'WHERE "table"', clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\bSELECT\s+table\b", 'SELECT "table"', clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\bORDER\s+BY\s+table\b", 'ORDER BY "table"', clean, flags=re.IGNORECASE)
+
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute(clean)
+        if cursor.description:
+            cols = [col[0] for col in cursor.description]
+            rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+            return rows
+        return []
+
+
 def run(sql: str, fmt: str = "JSON"):
     paths.CHDB_PATH.mkdir(parents=True, exist_ok=True)
-    import chdb
-    result = chdb.query(sql, output_format=fmt, path=str(paths.CHDB_PATH))
-    text = str(result)
-    if fmt == "JSON" and text.strip():
-        payload = json.loads(text)
-        return payload.get("data", [])
-    return text
+    try:
+        import chdb
+        result = chdb.query(sql, output_format=fmt, path=str(paths.CHDB_PATH))
+        text = str(result)
+        if fmt == "JSON" and text.strip():
+            payload = json.loads(text)
+            return payload.get("data", [])
+        return text
+    except (ImportError, Exception):
+        return _run_sqlite_fallback(sql, fmt=fmt)
 
 
 def init_schema() -> None:

@@ -65,7 +65,10 @@ def trace_url() -> str | None:
     explicit trace_id only works inside an active span context."""
     if _current_trace_id is None:
         return None
-    return client().get_trace_url(trace_id=_current_trace_id)
+    try:
+        return client().get_trace_url(trace_id=_current_trace_id)
+    except Exception:
+        return None
 
 
 def new_trace(spec_id: str) -> str:

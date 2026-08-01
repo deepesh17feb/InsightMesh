@@ -219,3 +219,9 @@ __marimo__/
 
 # git worktrees (superpowers subagent-driven-development)
 .worktrees/
+
+# Atlys agentic runtime data
+chdb_data/
+atlys_agentic/chdb_data/
+atlys_agentic/outputs/
+atlys_agentic/submission/
