@@ -178,4 +178,23 @@ python -m atlys_agentic.crew --spec_id 01_express_checkout --table express_check
 ```
 Prints the synthesized reasoning and outputs the active Langfuse trace URL.
 
+---
+
+## 4. Metadata Architecture & Industry Context (`chDB`)
+
+InsightMesh maintains four foundational metadata tables inside an embedded, zero-dependency `chDB` (ClickHouse Embedded) storage layer. These primitives embody key innovations from the modern data stack:
+
+| Metadata Table | Core Purpose | Industry Equivalent & Pioneers | When & Why It Became Popular | Role in InsightMesh |
+| :--- | :--- | :--- | :--- | :--- |
+| **`schema_registry`** | Contract & DDL Versioning | **Confluent Schema Registry**, AWS Glue Data Catalog | **~2015**: Rapid growth of event-driven architectures led to downstream breaking changes; schema registries enforced compatibility rules. | Tracks active table versions, column lists, and DDL history. Decides whether to `CREATE_NEW`, `REUSE_EXISTING`, or `ALTER_EXISTING`. |
+| **`business_context`** | Semantic Layer & Business Glossary | **Looker LookML**, **dbt Semantic Layer (MetricFlow)**, Atlan | **~2012–2021**: Solved metric divergence (conflicting definitions across teams) and centralized data quality caveats in code. | Single source of truth for business logic, metric definitions (e.g. conversion denominators), and known technical issues (`K1`–`K7`). |
+| **`context_changelog`** | Lineage & Governance Audit Trail | **OpenLineage**, **Marquez** (Linux Foundation), Monte Carlo | **~2020–2022**: Data observability revolution; compliance and root-cause analysis demanded immutable audit trails of metadata changes. | Append-only audit log tracking every definition updated by the **Context Librarian** along with author agent and Langfuse trace ID. |
+| **`insights`** | Durable Analytical Memory Store | **Feature Stores** (Feast, Tecton), Langfuse Agent Observability | **~2020–2025**: Analytical findings previously died in Slack/slides; AI agents require durable memory to avoid repeating or hallucinating past findings. | Persists structured anomaly diagnoses, multi-cut segment deltas, and statistical confidence scores produced by the **Product Analyst**. |
+
+### UI Registry Management
+The Streamlit portal (`src/atlys_agentic/ui_ingestion.py`) provides direct controls in the sidebar:
+- **`🧹 Clear Schemas`**: Truncates `schema_registry` so all incoming feature specs are evaluated as fresh `CREATE_NEW` tables while preserving learned business context.
+- **`🔄 Reset chDB`**: Performs a full factory reset across all 4 metadata tables and re-seeds `business_context` fresh from `base_context.md`.
+
+
 

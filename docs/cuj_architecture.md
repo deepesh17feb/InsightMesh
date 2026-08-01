@@ -154,3 +154,27 @@ flowchart TD
    - **`Tool_Score_Confidence`**: Calculates a deterministic confidence score:
      $$ \text{Score} = f(\text{Sample Size } N, \text{Effect Size } \Delta, \text{Known Issue Match}, \text{Cut Consistency}) \in [0, 1] $$
    - **Synthesis**: Formats a structured PM report, persists the insight to `chDB.insights`, logs the Langfuse trace span, and returns an OpenAI-compatible JSON payload to LibreChat.
+
+---
+
+## 3. Metadata Architecture & Semantic Storage Layer (`chDB`)
+
+InsightMesh leverages embedded `chDB` to maintain four foundational metadata stores that govern agent reasoning:
+
+```
+        ┌─────────────────────────────────────────────────────────────┐
+        │                     InsightMesh Engine                      │
+        ├──────────────────────────────┬──────────────────────────────┤
+        │  1. schema_registry          │  Contract & DDL Evolution    │
+        │  2. business_context         │  Semantic Layer & Caveats    │
+        │  3. context_changelog        │  Data Lineage & Audit Log    │
+        │  4. insights                 │  Durable Agent Findings      │
+        └──────────────────────────────┴──────────────────────────────┘
+```
+
+| Table | Industry Pioneer / Equivalent | When Popularized & Problem Solved | Role in Multi-Agent Execution |
+| :--- | :--- | :--- | :--- |
+| **`schema_registry`** | **Confluent Schema Registry**, AWS Glue Catalog | **~2015**: Event streaming explosion; prevented downstream breaking schema changes across distributed teams. | Tracks versioned ClickHouse table schemas; informs the **Instrumentation Engineer** whether to `CREATE_NEW`, `REUSE_EXISTING`, or `ALTER_EXISTING`. |
+| **`business_context`** | **Looker LookML**, **dbt Semantic Layer**, Atlan | **~2012–2021**: Solved metric divergence (conflicting definitions across teams) and codified data quality caveats. | Single source of truth for metric formulas, caveats (e.g. `OS NULL on Android`), and known issues `K1`–`K7`. Evaluated by the **Context Librarian**. |
+| **`context_changelog`** | **OpenLineage**, **Marquez** (Linux Foundation), Monte Carlo | **~2020–2022**: Data observability revolution; provided immutable audit logs of who changed business rules and when. | Append-only governance audit log tracking every definition updated by the **Context Librarian** with author agent and Langfuse trace ID. |
+| **`insights`** | **Feature Stores** (Feast, Tecton), Langfuse Agent Observability | **~2020–2025**: Analytical findings previously died in Slack/slides; AI agents require durable memory to cite verified findings. | Persists structured anomaly diagnoses, multi-cut segment deltas, and statistical confidence scores produced by the **Product Analyst**. |
