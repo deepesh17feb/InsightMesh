@@ -65,15 +65,14 @@ Agent names follow the problem statement: **Instrumentation Agent**, **Analytics
 it exists because SQL translation is a distinct responsibility from schema design (CUJ 1) and
 from result interpretation (CUJ 2).
 
-| Agent | Appears in | Code identifier |
-| :--- | :--- | :--- |
-| **Instrumentation Agent** | CUJ 1 | `instrumentation_engineer` |
-| **Analytics Agent** | CUJ 2 | `product_analyst` |
-| **Context Agent** | CUJ 1 + CUJ 2 | `context_librarian` |
-| **Query Architect** | CUJ 1 + CUJ 2 | `query_architect` |
+| Agent | Appears in |
+| :--- | :--- |
+| **Instrumentation Agent** | CUJ 1 |
+| **Analytics Agent** | CUJ 2 |
+| **Context Agent** | CUJ 1 + CUJ 2 |
+| **Query Architect** | CUJ 1 + CUJ 2 |
 
-Code identifiers in `agents.py`, `config/agents.yaml` and the tests keep their existing names;
-this table is the mapping. Prose, diagrams and Langfuse span names use the agent names.
+These names are used everywhere — prose, diagrams, Langfuse span names, and code.
 
 ### Roles
 
