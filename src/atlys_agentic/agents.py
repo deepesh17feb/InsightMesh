@@ -170,6 +170,22 @@ _DEFAULT_AGENTS_CONFIG = {
         "verbose": True,
         "max_iter": 5,
     },
+    "query_architect": {
+        "role": "Staff ClickHouse Query & DDL Translation Architect",
+        "goal": (
+            "Render validated schema design intent, column structures, and analytical queries into highly performant, "
+            "syntactically optimal ClickHouse DDL, Materialized Views, and SQL statements."
+        ),
+        "backstory": (
+            "You are a precision SQL and DDL compiler specializing in ClickHouse Cloud syntax. "
+            "You take structured design intent, column types, and field mappings from the Instrumentation Agent "
+            "and translate them into clean CREATE TABLE, ALTER TABLE, CREATE MATERIALIZED VIEW, and INSERT statements. "
+            "You never make schema design decisions on your own and you never execute queries against any database directly."
+        ),
+        "allow_delegation": False,
+        "verbose": True,
+        "max_iter": 5,
+    },
 }
 
 
@@ -240,4 +256,26 @@ def build_product_analyst() -> Agent:
         allow_delegation=cfg.get("allow_delegation", False),
         max_iter=cfg.get("max_iter", 5),
     )
+
+
+def build_query_architect() -> Agent:
+    cfg = load_agents_config().get("query_architect", _DEFAULT_AGENTS_CONFIG["query_architect"])
+    return Agent(
+        role=cfg["role"],
+        goal=cfg["goal"],
+        backstory=cfg["backstory"].strip(),
+        tools=[],
+        llm=llm(),
+        memory=False,
+        verbose=cfg.get("verbose", True),
+        allow_delegation=cfg.get("allow_delegation", False),
+        max_iter=cfg.get("max_iter", 5),
+    )
+
+
+# Agent naming aliases matching problem statement and locked CUJ specifications
+build_instrumentation_agent = build_instrumentation_engineer
+build_context_agent = build_context_librarian
+build_analytics_agent = build_product_analyst
+
 
