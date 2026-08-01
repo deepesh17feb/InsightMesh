@@ -6,6 +6,7 @@ singleton configured from LANGFUSE_PUBLIC_KEY/SECRET_KEY/HOST env vars, and
 another builds the trace tree automatically via OTEL context propagation, so
 callers never pass a trace_id by hand.
 """
+import os
 from contextlib import contextmanager
 
 from dotenv import load_dotenv
@@ -15,6 +16,33 @@ from atlys_agentic import paths
 
 load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env")
 load_dotenv(paths.REPO_ROOT / ".env")
+
+
+def resolve_run_mode(run_mode: str | None = None) -> str:
+    """Resolve active execution mode: 'test_run', 'dry_run', 'live_run', or 'librechat_client'."""
+    if run_mode in ("test_run", "live_run", "dry_run", "librechat_client", "librechat"):
+        return "librechat_client" if run_mode in ("librechat_client", "librechat") else run_mode
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return "test_run"
+    return "live_run"
+
+
+def format_span_name(name: str, run_mode: str | None = None) -> str:
+    """Format span name with run mode prefix: e.g. 'live_run::infer_schema', 'dry_run::audit', 'librechat_client::chat_completions'."""
+    mode = resolve_run_mode(run_mode)
+    if name.startswith((
+        "test_run::",
+        "live_run::",
+        "dry_run::",
+        "librechat_client::",
+        "librechat::",
+        "[TEST_RUN]",
+        "[LIVE_RUN]",
+        "[DRY_RUN]",
+        "[LIBRECHAT]",
+    )):
+        return name
+    return f"{mode}::{name}"
 
 
 def init_litellm_callbacks() -> None:
@@ -35,27 +63,35 @@ _current_trace_id: str | None = None
 
 
 @contextmanager
-def trace(name: str, input: dict | None = None, metadata: dict | None = None):
+def trace(name: str, input: dict | None = None, metadata: dict | None = None, run_mode: str | None = None):
     """Root span for one pipeline run (one ingestion, one analysis question).
     Everything nested inside via step() becomes part of the same trace."""
     global _current_trace_id
+    mode = resolve_run_mode(run_mode)
+    formatted_name = format_span_name(name, mode)
+    meta = (metadata or {}).copy()
+    meta["run_mode"] = mode
+
     with client().start_as_current_observation(
-        name=name, as_type="span", input=input or {}, metadata=metadata or {}
+        name=formatted_name, as_type="span", input=input or {}, metadata=meta
     ) as span:
-        # captured while the span is active — get_trace_url() needs this
-        # explicitly once the caller wants the URL after the block exits.
         _current_trace_id = client().get_current_trace_id()
         yield span
     client().flush()
 
 
 @contextmanager
-def step(name: str, input: dict | None = None, metadata: dict | None = None):
+def step(name: str, input: dict | None = None, metadata: dict | None = None, run_mode: str | None = None):
     """One agent step / tool call / SQL statement / context source, nested
     under whichever trace() is currently active. Call `span.update(output=...)`
     inside the block once the result is known."""
+    mode = resolve_run_mode(run_mode)
+    formatted_name = format_span_name(name, mode)
+    meta = (metadata or {}).copy()
+    meta["run_mode"] = mode
+
     with client().start_as_current_observation(
-        name=name, as_type="span", input=input or {}, metadata=metadata or {}
+        name=formatted_name, as_type="span", input=input or {}, metadata=meta
     ) as span:
         yield span
 
@@ -72,29 +108,43 @@ def trace_url() -> str | None:
         return None
 
 
-def new_trace(spec_id: str) -> str:
-    """Create a new trace id tagged with spec_id."""
+def new_trace(spec_id: str, run_mode: str | None = None) -> str:
+    """Create a new trace id tagged with spec_id and run_mode (test_run | live_run | dry_run)."""
     global _current_trace_id
+    mode = resolve_run_mode(run_mode)
+    trace_name = f"clickathon-{mode}-{spec_id}"
     try:
         c = client()
         if hasattr(c, "trace"):
-            t = c.trace(name=f"clickathon-run-{spec_id}", tags=[spec_id])
+            t = c.trace(name=trace_name, tags=[spec_id, mode])
             _current_trace_id = getattr(t, "id", str(t))
             return _current_trace_id
     except Exception:
         pass
-    _current_trace_id = f"trace-{spec_id}"
+    _current_trace_id = f"trace-{mode}-{spec_id}"
     return _current_trace_id
 
 
-def span(trace_id: str, name: str, input: dict, output: dict, metadata: dict | None = None) -> None:
-    """Record a span with input/output under the trace."""
+def span(
+    trace_id: str,
+    name: str,
+    input: dict,
+    output: dict,
+    metadata: dict | None = None,
+    run_mode: str | None = None,
+) -> None:
+    """Record a span with input/output under the trace, prefixed by run mode."""
+    mode = resolve_run_mode(run_mode)
+    formatted_name = format_span_name(name, mode)
+    meta = (metadata or {}).copy()
+    meta["run_mode"] = mode
+
     try:
         c = client()
         if hasattr(c, "span"):
-            c.span(trace_id=trace_id, name=name, input=input, output=output, metadata=metadata or {})
+            c.span(trace_id=trace_id, name=formatted_name, input=input, output=output, metadata=meta)
         elif hasattr(c, "start_as_current_observation"):
-            with c.start_as_current_observation(name=name, as_type="span", input=input, metadata=metadata or {}) as s:
+            with c.start_as_current_observation(name=formatted_name, as_type="span", input=input, metadata=meta) as s:
                 if hasattr(s, "update"):
                     s.update(output=output)
     except Exception:

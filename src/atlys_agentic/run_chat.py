@@ -30,7 +30,7 @@ except ImportError:  # pragma: no cover
 
     from pydantic import BaseModel, Field
 
-from atlys_agentic import chdb_client, paths
+from atlys_agentic import chdb_client, paths, tracing
 from atlys_agentic.flows import analysis_flow, ingestion_flow
 
 app = FastAPI(title="Atlys Analytics Platform — CUJ 1 Ingestion UI & CUJ 2 Analyst Chat")
@@ -139,7 +139,23 @@ def approve_ingestion(req: IngestionRequest):
 @app.post("/v1/chat/completions")
 def chat_completions(req: ChatCompletionRequest):
     question = req.messages[-1].content
-    result = analysis_flow.run(question=question, spec_id="chat", base_sql=_DEFAULT_BASE_SQL)
+    trace_id = tracing.new_trace("librechat", run_mode="librechat_client")
+
+    with tracing.step(
+        "librechat_query_execution",
+        input={"question": question, "model": req.model},
+        metadata={"client": "librechat_client", "model": req.model},
+        run_mode="librechat_client",
+    ):
+        result = analysis_flow.run(question=question, spec_id="chat", base_sql=_DEFAULT_BASE_SQL)
+        tracing.span(
+            trace_id,
+            "chat_completions",
+            {"question": question, "model": req.model},
+            {"answer": result.get("executive_summary", ""), "confidence": result.get("confidence", {})},
+            metadata={"client": "librechat_client"},
+            run_mode="librechat_client",
+        )
 
     content = (
         f"{result['answer_md']}\n\n"
