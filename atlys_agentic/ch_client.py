@@ -39,9 +39,12 @@ def bootstrap_existing_tables() -> None:
     data, by shelling out to the vendored load.sh (keeps one source of truth
     for the load logic instead of re-implementing parquet insert here)."""
     db = os.environ.get("CLICKHOUSE_DATABASE", "clickathon")
+    # 9440 is ClickHouse Cloud's fixed native-protocol (TCP) port used by the
+    # clickhouse-client CLI. It is distinct from CLICKHOUSE_PORT (8443), which
+    # is the HTTPS port used by get_client()'s clickhouse_connect HTTP client.
     ch_cmd = (
         f"clickhouse-client --host {os.environ['CLICKHOUSE_HOST']} "
-        f"--port {os.environ.get('CLICKHOUSE_PORT', '9440')} "
+        f"--port 9440 "
         f"--user {os.environ['CLICKHOUSE_USER']} "
         f"--password {os.environ['CLICKHOUSE_PASSWORD']} --secure"
     )
