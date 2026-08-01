@@ -18,6 +18,17 @@ _LOW_CARDINALITY_HINTS = {
 
 _TIMESTAMP_KEYS = {"timestamp", "ts", "created_at", "occurred_at"}
 
+# Brief: "all sampled values are short enums" -> a string column with at most
+# this many distinct sampled values is treated as a bounded enum even when
+# its name isn't in _LOW_CARDINALITY_HINTS.
+_ENUM_CARDINALITY_THRESHOLD = 5
+
+# Base types worth exposing as Nullable(...) when a column is absent in some
+# sampled rows. DateTime/UInt8/LowCardinality(String) are returned as exact
+# literals elsewhere in this function (existing tests assert those literal
+# strings), and plain string columns already default to Nullable(String).
+_NULLABLE_WRAPPABLE = {"Int64", "Float64"}
+
 
 def _flatten(event: dict, prefix: str = "") -> dict:
     flat = {}
@@ -30,7 +41,7 @@ def _flatten(event: dict, prefix: str = "") -> dict:
     return flat
 
 
-def _infer_type(key: str, values: list) -> str:
+def _infer_type(key: str, values: list, sparse: bool = False) -> str:
     non_null = [v for v in values if v is not None]
     if not non_null:
         return "Nullable(String)"
@@ -39,16 +50,22 @@ def _infer_type(key: str, values: list) -> str:
     if all(isinstance(v, bool) for v in non_null):
         return "UInt8"
     if all(isinstance(v, int) and not isinstance(v, bool) for v in non_null):
-        if set(non_null) <= {0, 1} and ("is_" in key or key.startswith("has_")):
+        if set(non_null) <= {0, 1}:
             return "UInt8"
-        return "Int64"
-    if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in non_null):
-        return "Float64"
-    # string-typed
-    base = key.split("_")[-1] if "_" in key else key
-    if key in _LOW_CARDINALITY_HINTS or base in _LOW_CARDINALITY_HINTS:
-        return "LowCardinality(String)"
-    return "Nullable(String)"
+        base = "Int64"
+    elif all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in non_null):
+        base = "Float64"
+    else:
+        # string-typed
+        suffix = key.split("_")[-1] if "_" in key else key
+        is_short_enum = len(set(non_null)) <= _ENUM_CARDINALITY_THRESHOLD
+        if key in _LOW_CARDINALITY_HINTS or suffix in _LOW_CARDINALITY_HINTS or is_short_enum:
+            return "LowCardinality(String)"
+        return "Nullable(String)"
+
+    if sparse and base in _NULLABLE_WRAPPABLE:
+        return f"Nullable({base})"
+    return base
 
 
 def _load_events(ndjson_path: Path) -> list[dict]:
@@ -70,7 +87,9 @@ def Tool_Infer_Schema(ndjson_path: Path, spec_md_text: str, table_name: str) -> 
     for row in flattened:
         for k, v in row.items():
             columns.setdefault(k, []).append(v)
-    # columns absent in some rows are implicitly None there
+    # a column present in fewer rows than the sample size is absent (None)
+    # in the other rows -> its inferred type should be Nullable(...)
+    sparse_keys = {k for k, vals in columns.items() if len(vals) < len(flattened)}
     for k in columns:
         columns[k] = columns[k] + [None] * (len(flattened) - len(columns[k]))
 
@@ -80,7 +99,7 @@ def Tool_Infer_Schema(ndjson_path: Path, spec_md_text: str, table_name: str) -> 
         if key in ("user_id", "application_id", "id"):
             col_type = "String" if key != "id" else "UUID"
         else:
-            col_type = _infer_type(key, columns[key])
+            col_type = _infer_type(key, columns[key], sparse=key in sparse_keys)
         lines.append(f"    {key} {col_type}")
 
     if "timestamp" not in ordered_keys:
