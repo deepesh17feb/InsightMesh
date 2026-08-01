@@ -16,7 +16,7 @@
 | **Schema quality** (order keys, partition, types, TTL, MVs earn keep) | High | §5.1, §7.1, §8.2 |
 | **Insight quality** (PM would act; the *why*) | High | §5.2, §7.2, §9 |
 | **Context freshness** (reasons with *updated* context) | High | §5.3, §6 (CUJ 3), §8.3 |
-| **Traceability** (no trace, no credit) | High | §5.4, §10 |
+| **Traceability** (no trace, no credit) | High | §5.4, §10 (Langfuse semantic + ClickStack system) |
 | **The Unseen 6th spec** (schema + insight + trace) | **Highest** | §6 (CUJ 4), §11 (Day-2 runbook) |
 | Visualization layer (schema history, insights+confidence, context diff) | Required #4 | §5.5, §9.4, §12 |
 
@@ -39,7 +39,13 @@ logs (NDJSON), the system automatically:
 
 **Stack:** **CrewAI** (multi-agent orchestration) · **ClickHouse Cloud** (primary datastore) ·
 **chDB** (embedded ClickHouse for the context/metadata layer) · **Langfuse** (LLM/agent tracing) ·
+**ClickStack** (OpenTelemetry-based system-level observability on ClickHouse + HyperDX UI) ·
 **LibreChat** (analyst chat UI) · **LiteLLM** (provider routing + Langfuse callbacks).
+
+**Two-tier observability:** **Langfuse** owns the *semantic/LLM* trace (agent reasoning, prompts,
+tokens, context provenance); **ClickStack** owns the *system* trace (OTel spans/metrics/logs for
+tool calls, ClickHouse query latency, DDL execution, HITL gate timing, errors). Together they give a
+judge both "why the agent decided X" **and** "how the pipeline behaved end-to-end."
 
 ---
 
@@ -102,20 +108,25 @@ flowchart LR
     Backend <-->|explicit SQL| chDB[(chDB · context+registry)]
     Backend <-->|DDL / SELECT| CH[(ClickHouse Cloud · 8 existing + N feature tables)]
     Backend -->|LiteLLM| LLM{{LLM Provider}}
-    Backend -->|spans| LF[(Langfuse)]
+    Backend -->|LLM/agent spans| LF[(Langfuse)]
+    Backend -->|OTLP system spans/metrics/logs| CS[(ClickStack · OTel + HyperDX)]
     Backend --> VIZ[Visualization / structured CLI]
 ```
 
-**Where it runs:** local — CLI, CrewAI backend, chDB, LibreChat, viz; remote — ClickHouse Cloud,
-Langfuse, LLM API. Out of scope (per PS): auth, prod deploy, streaming, polished FE.
+**Where it runs:** local — CLI, CrewAI backend, chDB, LibreChat, viz, ClickStack (docker `otel-collector` +
+HyperDX + its ClickHouse); remote — ClickHouse Cloud, Langfuse, LLM API. Out of scope (per PS): auth,
+prod deploy, streaming, polished FE.
 
 ### 4.2 Data Flow (includes the 8 existing tables — fixes report1 R16)
 
 1. **Bootstrap:** `data/load.sh` creates DB + loads the **8 existing raw tables** (`ddl.sql`, ~2.5M rows) into CH Cloud. `context/base_context.md` is chunked into chDB `business_context`.
 2. **Ingestion (CUJ 1):** spec + NDJSON → inferred DDL/MVs → HITL approve → executed on Cloud + mirrored to chDB `schema_registry`.
 3. **Context evolution (CUJ 3):** new schema diffed vs context → proposals + contradictions → versioned write + changelog.
-4. **Analysis (CUJ 2):** PM question → Librarian JIT context + new & existing tables → aggregated SQL → insight + confidence → Langfuse trace → viz.
+4. **Analysis (CUJ 2):** PM question → Librarian JIT context + new & existing tables → aggregated SQL → insight + confidence → Langfuse (semantic) + ClickStack (system) trace → viz.
 5. **Unseen run (CUJ 4):** §11 runbook → `submission/06_unseen/`.
+
+Every step above is instrumented with OpenTelemetry; the OTel SDK exports to a local **ClickStack**
+collector (see §10.2) so system-level behavior is queryable in HyperDX alongside the raw ClickHouse data.
 
 ### 4.3 Non-Functional Requirements
 
@@ -126,7 +137,8 @@ Langfuse, LLM API. Out of scope (per PS): auth, prod deploy, streaming, polished
 | Idempotency | `CREATE TABLE IF NOT EXISTS`; re-runs upsert registry rows by version. |
 | Latency (chat) | ≤ ~10s typical analytical answer. |
 | Rollback | DDL failure after approve → cleanup partial objects; chDB↔Cloud parity check. |
-| Traceability | Every agent step, tool call, and context source emitted as a Langfuse span. |
+| Traceability | Every agent step, tool call, and context source → Langfuse span (semantic) **and** OTel span → ClickStack (system). |
+| System observability | ClickHouse query latency, DDL exec time, HITL wait, error rates visible in HyperDX dashboards. |
 
 ---
 
@@ -156,8 +168,10 @@ Langfuse, LLM API. Out of scope (per PS): auth, prod deploy, streaming, polished
   5. Entity lag — undocumented columns (e.g. `failed_attempt_threshold`).
   6. K1–K7 wired as interpretation hooks.
 
-### 5.4 Tracing (Deliverable #4a — Langfuse)
-- LiteLLM callback routes every LLM call to Langfuse. Custom spans wrap each **agent step, tool call, SQL executed, and context source** so a judge can follow *what/why/based-on-what-context*. Trace URL exported for the unseen submission.
+### 5.4 Tracing (Deliverable #4a — Langfuse + ClickStack)
+Two complementary layers (see §10):
+- **Langfuse (semantic):** LiteLLM callback routes every LLM call to Langfuse. Custom spans wrap each **agent step, tool call, SQL executed, and context source** so a judge can follow *what/why/based-on-what-context*. Trace URL exported for the unseen submission.
+- **ClickStack (system):** OpenTelemetry SDK emits spans/metrics/logs (tool latency, ClickHouse query time, DDL execution, HITL gate duration, errors) to a local ClickStack collector; explored in HyperDX. Correlated to Langfuse via a shared `trace_id`. Satisfies PS's optional "ClickStack works for the system-level view if you want to go further."
 
 ### 5.5 Visualization (Deliverable #4b) — fixes R13
 Structured-CLI (PS allows CLI) + optional lightweight dashboard rendering three required views:
@@ -236,7 +250,8 @@ language (no DB jargon) · never pull raw rows into the LLM.
 ### 8.1 Modules
 | File | Responsibility |
 |---|---|
-| `main.py` | Load `.env`, wire LiteLLM→Langfuse callbacks, map CLI arg (spec dir) → `crew.kickoff()`. |
+| `main.py` | Load `.env`, wire LiteLLM→Langfuse callbacks, init OTel→ClickStack tracer, map CLI arg (spec dir) → `crew.kickoff()`. |
+| `observability.py` | Sets up OTel tracer/exporter (OTLP→ClickStack) + shared `trace_id` stamped on both Langfuse and OTel spans. *(NEW)* |
 | `agents.py` | 3 memory-free personas (Instrumentation Engineer, Context Librarian, Product Analyst) with system prompts + output contracts. |
 | `tasks.py` | Sequential graph: `setup_context → instrumentation → context_audit → context_retrieval → generate_insights`. |
 | `tools.py` | Deterministic skills (below). |
@@ -273,10 +288,30 @@ displayed in the viz layer.
 
 ---
 
-## 10. Tracing Plan (Langfuse — "no trace, no credit")
+## 10. Tracing Plan (Langfuse + ClickStack — "no trace, no credit")
+
+### 10.1 Langfuse — semantic / LLM trace
 - LiteLLM callback → all LLM calls traced (tokens, cost, latency).
 - Custom spans wrap each agent step, tool call, executed SQL, and **context source row** (provenance — fixes R12).
-- One root trace per run tagged `spec_id`; URL/JSON exported for submission.
+- One root trace per run tagged `spec_id`; URL/JSON exported for submission (§11).
+
+### 10.2 ClickStack — system-level observability
+- **What it is:** ClickHouse's OpenTelemetry-native observability stack (OTel collector → ClickHouse → **HyperDX** UI) for spans, metrics, and logs.
+- **Deployment:** single container `docker run -p 8080:8080 -p 4317:4317 -p 4318:4318 docker.hyperdx.io/hyperdx/hyperdx-all-in-one` (bundles OTel collector + ClickHouse + HyperDX). Config in `config/.env.example` (§13).
+- **Instrumentation:** wrap `main.py`, each tool in `tools.py`, and each ClickHouse call with OTel spans (`opentelemetry-sdk` + `opentelemetry-instrumentation`); export OTLP to `localhost:4318`.
+- **What it captures:** end-to-end pipeline span tree, per-tool latency, ClickHouse **query duration & rows read**, DDL execution time, HITL gate wait, retries, and error/exception events.
+- **Correlation:** the CrewAI run's `trace_id` is stamped as an OTel attribute **and** a Langfuse trace id → jump between the "why" (Langfuse) and the "how/how-fast" (HyperDX) for the same run.
+- **Why both, not one:** Langfuse is blind to system performance (query cost, DDL timing, failures); ClickStack is blind to agent reasoning/prompts/context provenance. Together they cover the full reasoning **and** execution chain a judge may inspect.
+
+### 10.3 Division of responsibility
+| Concern | Langfuse | ClickStack (HyperDX) |
+|---|---|---|
+| Agent reasoning / prompts / context provenance | ✅ | — |
+| Tokens & LLM cost | ✅ | — |
+| Tool & ClickHouse query latency | partial | ✅ |
+| DDL execution time, HITL wait, retries, errors | — | ✅ |
+| System dashboards / alerting view | — | ✅ |
+| Submission trace (unseen spec) | ✅ (primary) | ✅ (supporting) |
 
 ---
 
@@ -284,8 +319,8 @@ displayed in the viz layer.
 1. Drop sealed files into `specs/06_unseen/{spec.md, events.ndjson}`.
 2. `python run_ingestion.py --spec_dir specs/06_unseen` → review DDL/MV → type `APPROVE`.
 3. Run analyst pipeline → **PM-audience** `insight.md` (why, not just what; multi-cut; confidence).
-4. Export Langfuse **trace URL + JSON** proving pipeline provenance.
-5. Assemble `submission/06_unseen/{schema.sql, insight.md, trace.json}`.
+4. Export Langfuse **trace URL + JSON** (semantic provenance) **and** a ClickStack/HyperDX link or exported OTel spans (system provenance, same `trace_id`).
+5. Assemble `submission/06_unseen/{schema.sql, insight.md, trace.json, clickstack_trace.(json|link)}`.
 6. **Rehearse** this exact flow on a known spec (e.g. `01_express_checkout`) before Day 2.
 
 ---
@@ -301,6 +336,10 @@ insights with confidence scores, **(c)** context diff/changelog — sourced from
 ```
 CLICKHOUSE_HOST=  CLICKHOUSE_USER=  CLICKHOUSE_PASSWORD=  CLICKHOUSE_SECURE=true
 LANGFUSE_PUBLIC_KEY=  LANGFUSE_SECRET_KEY=  LANGFUSE_HOST=
+# ClickStack / OpenTelemetry (system observability)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OTEL_SERVICE_NAME=atlys-agentic
+HYPERDX_API_KEY=            # from the HyperDX all-in-one container
 LLM_PROVIDER=  LLM_MODEL=  LLM_API_KEY=  LLM_TEMPERATURE=0
 ```
 **LLM choice:** state provider/model explicitly (temp 0 for determinism; JSON-summary strategy for token budget).
@@ -317,10 +356,11 @@ LLM_PROVIDER=  LLM_MODEL=  LLM_API_KEY=  LLM_TEMPERATURE=0
 | Insight | golden-question check on a known spec returns multi-cut answer + confidence. |
 | Context freshness | after new table, `context_changelog` has a new versioned row; contradiction flagged. |
 | Traceability | Langfuse shows root trace with agent/tool/context spans. |
+| System obs | HyperDX shows the run's OTel span tree with ClickHouse query latency; `trace_id` matches Langfuse. |
 | **E2E rehearsal** | full CUJ 4 dry-run on `01_express_checkout` produces a valid `submission/` bundle. |
 
-**Manual:** verify `.env` matches Atlys Cloud; Langfuse "Clickathon Run" traces populate; Cloud Query
-Console shows the new feature tables.
+**Manual:** verify `.env` matches Atlys Cloud; Langfuse "Clickathon Run" traces populate; HyperDX/ClickStack
+receives OTLP spans; Cloud Query Console shows the new feature tables.
 
 ---
 
@@ -330,7 +370,8 @@ Console shows the new feature tables.
 | Orchestration | CrewAI (Sequential) | Role/task abstraction, HITL, LiteLLM→Langfuse | LangGraph, custom | less graph flexibility |
 | Datastore | ClickHouse Cloud | mandated; `windowFunnel` analytics | — | — |
 | **Context storage** | **chDB (embedded ClickHouse)** | **same SQL dialect ⇒ 1:1 DDL parity, local, inspectable, no hidden memory** | file/MD, vector store, CH table | not semantic-search; needs explicit routing |
-| Tracing | Langfuse via LiteLLM | "no trace, no credit"; spans + cost + provenance | ClickStack, Phoenix | — |
+| Semantic tracing | Langfuse via LiteLLM | "no trace, no credit"; agent spans + cost + context provenance | Phoenix, LangSmith | not system-level |
+| System tracing | **ClickStack (OTel + HyperDX)** | PS-suggested "system-level view"; OTel-native, stores in ClickHouse (dogfoods stack), query latency + errors | Grafana/Tempo, Jaeger | extra local container |
 | Analyst UI | LibreChat | fast read-only chat (FE out of scope) | Streamlit, CLI | not a schema/context view ⇒ still need §12 |
 | Memory policy | no CrewAI memory; explicit SQL context | determinism + traceability | native memory | must build evolution loop (CUJ 3) |
 | Nested fields | flatten to columns | columnar perf, simpler funnel SQL | `Nested`/JSON | loses nesting shape |
@@ -349,5 +390,6 @@ Console shows the new feature tables.
 ## 17. Verdict / Readiness
 This final design covers **all four deliverables** and **all five scored axes**, including the
 previously missing **unseen-spec runbook, visualization layer, confidence scoring, and living/
-audited context** — with explicit schema rules, tracing provenance, and design-choice
-justification. Gaps from `report1.md` are closed additively.
+audited context** — with explicit schema rules, **two-tier tracing (Langfuse semantic + ClickStack
+system, correlated by `trace_id`)**, and design-choice justification. Gaps from `report1.md` are
+closed additively, and the optional ClickStack "go further" system-level view is now integrated.
