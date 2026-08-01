@@ -84,26 +84,16 @@ pytest tests/test_e2e_rehearsal.py -v
 To ingest a new feature specification and event stream into ClickHouse Cloud:
 
 ```bash
+# Interactive Mode (Prompts for 'APPROVE' before applying to ClickHouse Cloud)
 python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/01_express_checkout" --table express_checkout
+
+# Dry Run Mode (Generates DDL, MVs, and context diff audit without modifying Cloud or chDB)
+python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/01_express_checkout" --table express_checkout --dry-run
 ```
 
-#### What Happens During Execution:
-1. **Context Initialization**: `chdb_client` parses `base_context.md` into chunked, versioned rows in `business_context`.
-2. **Schema Inference (`Instrumentation Engineer`)**:
-   - Analyzes `events.ndjson` and `spec.md`.
-   - Generates production ClickHouse DDL with `(timestamp, user_id)` ORDER BY key, `toYYYYMM(timestamp)` partitioning, 12-month TTL, and `LowCardinality(String)` types.
-   - Generates daily segment rollup Materialized View (`SummingMergeTree`) if segment columns exist.
-3. **Human-in-the-Loop (HITL) Gate**:
-   - Prints the proposed DDL and Materialized View to the console.
-   - Prompts the operator: `Type APPROVE to execute on ClickHouse Cloud: `.
-   - If the operator types `APPROVE`, execution proceeds. Any other input aborts cleanly without modifying ClickHouse Cloud.
-4. **Cloud Execution & Schema Registry**:
-   - Executes DDL on ClickHouse Cloud.
-   - Records versioned schema snapshot in `chDB.schema_registry`.
-5. **Context Audit (`Context Librarian`)**:
-   - Diffs table columns against `business_context`.
-   - Flags contradictions (e.g. conversion-rate denominator conflicts) and undocumented columns.
-   - Upserts newly discovered columns into `business_context` and logs changes in `context_changelog`.
+#### Dry-Run Mode vs. Interactive Mode
+- **`--dry-run`**: Analyzes the spec and event stream, generates the optimal DDL & Materialized View, audits table columns against `business_context` for contradictions and gaps, and prints the proposed plan without prompting or mutating ClickHouse Cloud / `chDB`.
+- **Interactive Execution**: Prints the proposed DDL and prompts operator `Type APPROVE to execute on ClickHouse Cloud: `. On approval, applies DDL to ClickHouse Cloud, records snapshots in `schema_registry`, and synchronizes new columns with `business_context` and `context_changelog`.
 
 ---
 

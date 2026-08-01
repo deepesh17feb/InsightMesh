@@ -27,6 +27,12 @@ def main(argv: list[str] = None) -> int:
         required=True,
         help="Destination ClickHouse table name (e.g. express_checkout)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Perform a dry run: suggest DDL, MVs, and context diff without modifying ClickHouse Cloud or chDB.",
+    )
     args = parser.parse_args(argv)
 
     spec_id = args.spec_dir.rstrip("/").split("/")[-1]
@@ -34,8 +40,8 @@ def main(argv: list[str] = None) -> int:
     chdb_client.init_schema()
     chdb_client.init_base_context()
 
-    result = ingestion_flow.run(spec_id=spec_id, table_name=args.table)
-    return 0 if result["approved"] else 1
+    result = ingestion_flow.run(spec_id=spec_id, table_name=args.table, dry_run=args.dry_run)
+    return 0 if (result["approved"] or result.get("dry_run")) else 1
 
 
 if __name__ == "__main__":

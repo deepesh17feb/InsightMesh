@@ -36,8 +36,10 @@ flowchart TD
         IE --> T2
     end
 
-    subgraph S2 ["2. Human-in-the-Loop Approval Gate"]
-        Gate{"Operator Prompt:<br/>Type APPROVE to execute"}:::gateNode
+    %% Step 2
+    subgraph S2 ["2. Gate / Dry-Run Routing"]
+        Gate{"Mode / Operator Prompt:<br/>--dry-run OR Type APPROVE"}:::gateNode
+        DryRunPlan["Dry-Run Output<br/>(Proposed DDL, MV, Context Diff<br/>Zero Cloud or chDB Mutation)"]:::inputNode
         Abort["Abort Execution<br/>(Zero Mutation on ClickHouse Cloud)"]:::abortNode
     end
 
@@ -59,6 +61,7 @@ flowchart TD
     %% Connections
     Input --> S1
     S1 --> Gate
+    Gate -->|--dry-run| DryRunPlan
     Gate -->|Rejected / Other| Abort
     Gate -->|Approved| S3
 ```
