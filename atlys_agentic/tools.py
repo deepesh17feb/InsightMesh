@@ -182,3 +182,11 @@ def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str) -> dict:
         fmt="CSV",
     )
     return {"status": "ok", "table": table_name, "version": version, "error": None}
+
+def Tool_Analytics_Compute(select_sql: str) -> dict:
+    """Push all aggregation into ClickHouse; never let raw rows or non-SELECT
+    statements reach the caller (Analyst path is read-only by construction)."""
+    if not re.match(r"^\s*SELECT\b", select_sql, re.IGNORECASE):
+        raise ValueError("Tool_Analytics_Compute is SELECT-only")
+    rows = ch_client.select(select_sql)
+    return {"rows": rows}

@@ -164,3 +164,16 @@ def test_execute_ddl_failure_rolls_back_and_reports_error():
     assert result["status"] == "rolled_back"
     assert "syntax error" in result["error"]
     mock_select.assert_called_once_with("DROP TABLE IF EXISTS t2")
+
+def test_analytics_compute_rejects_non_select():
+    with pytest.raises(ValueError, match="SELECT-only"):
+        tools.Tool_Analytics_Compute("DROP TABLE purchase_completed")
+    with pytest.raises(ValueError, match="SELECT-only"):
+        tools.Tool_Analytics_Compute("INSERT INTO x VALUES (1)")
+
+
+def test_analytics_compute_returns_json_rows():
+    with patch("atlys_agentic.tools.ch_client.select", return_value=[{"c": 42}]) as mock_select:
+        result = tools.Tool_Analytics_Compute("SELECT count() AS c FROM purchase_completed")
+    mock_select.assert_called_once_with("SELECT count() AS c FROM purchase_completed")
+    assert result == {"rows": [{"c": 42}]}
