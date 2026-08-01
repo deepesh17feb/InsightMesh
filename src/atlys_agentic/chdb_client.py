@@ -49,6 +49,17 @@ _SCHEMA_DDL = [
         created_at DateTime
     ) ENGINE = MergeTree ORDER BY (spec_id, created_at)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS table_semantics (
+        table_name String,
+        spec_id String,
+        description String,
+        concepts String,
+        embedding Array(Float32),
+        version UInt16,
+        created_at DateTime
+    ) ENGINE = MergeTree ORDER BY (table_name, version)
+    """,
 ]
 
 
@@ -68,6 +79,7 @@ def _get_sqlite_conn():
             clean = re.sub(r"\bString\b", "TEXT", clean, flags=re.IGNORECASE)
             clean = re.sub(r"\bLowCardinality\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
             clean = re.sub(r"\bNullable\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
+            clean = re.sub(r"\bArray\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
             clean = re.sub(r"\bUUID\b", "TEXT", clean, flags=re.IGNORECASE)
             clean = re.sub(r"\btable\s+TEXT\b", '"table" TEXT', clean, flags=re.IGNORECASE)
             try:
@@ -91,6 +103,7 @@ def _run_sqlite_fallback(sql: str, fmt: str = "JSON"):
         clean = re.sub(r"\bString\b", "TEXT", clean, flags=re.IGNORECASE)
         clean = re.sub(r"\bLowCardinality\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
         clean = re.sub(r"\bNullable\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\bArray\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
         clean = re.sub(r"\bUUID\b", "TEXT", clean, flags=re.IGNORECASE)
         clean = re.sub(r"\btable\s+TEXT\b", '"table" TEXT', clean, flags=re.IGNORECASE)
 
@@ -100,6 +113,8 @@ def _run_sqlite_fallback(sql: str, fmt: str = "JSON"):
     clean = re.sub(r"\bWHERE\s+table\b", 'WHERE "table"', clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bSELECT\s+table\b", 'SELECT "table"', clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bORDER\s+BY\s+table\b", 'ORDER BY "table"', clean, flags=re.IGNORECASE)
+    # Convert unquoted Array literal [ ... ] to '[ ... ]' for SQLite
+    clean = re.sub(r"(?<!['\w])\[(.*?)\](?!['\w])", r"'[\1]'", clean)
 
     with conn:
         cursor = conn.cursor()
@@ -131,9 +146,9 @@ def init_schema() -> None:
 
 
 def reset_chdb() -> None:
-    """Reset all 4 chDB metadata tables for clean state isolation."""
+    """Reset all chDB metadata tables for clean state isolation."""
     init_schema()
-    for table_name in ("business_context", "schema_registry", "context_changelog", "insights"):
+    for table_name in ("business_context", "schema_registry", "context_changelog", "insights", "table_semantics"):
         try:
             run(f"TRUNCATE TABLE {table_name}", fmt="CSV")
         except Exception:

@@ -122,7 +122,7 @@ def _score_confidence_tool(
 
 
 _DEFAULT_AGENTS_CONFIG = {
-    "instrumentation_engineer": {
+    "instrumentation_agent": {
         "role": "Staff ClickHouse Systems & Telemetry Architect",
         "goal": (
             "Transform product feature specifications and raw telemetry event streams into production-grade, "
@@ -138,7 +138,7 @@ _DEFAULT_AGENTS_CONFIG = {
         "verbose": True,
         "max_iter": 5,
     },
-    "context_librarian": {
+    "context_agent": {
         "role": "Lead Business-Logic Integrity Auditor & Context Gatekeeper",
         "goal": (
             "Maintain an authoritative, version-controlled business context layer in chDB, proactively detecting, "
@@ -154,7 +154,7 @@ _DEFAULT_AGENTS_CONFIG = {
         "verbose": True,
         "max_iter": 5,
     },
-    "product_analyst": {
+    "analytics_agent": {
         "role": "Principal Product Analytics & Growth Data Scientist",
         "goal": (
             "Deliver high-impact, PM-actionable product insights that uncover the root cause ('the why') behind "
@@ -187,6 +187,10 @@ _DEFAULT_AGENTS_CONFIG = {
         "max_iter": 5,
     },
 }
+# Legacy aliases
+_DEFAULT_AGENTS_CONFIG["instrumentation_engineer"] = _DEFAULT_AGENTS_CONFIG["instrumentation_agent"]
+_DEFAULT_AGENTS_CONFIG["context_librarian"] = _DEFAULT_AGENTS_CONFIG["context_agent"]
+_DEFAULT_AGENTS_CONFIG["product_analyst"] = _DEFAULT_AGENTS_CONFIG["analytics_agent"]
 
 
 def load_agents_config() -> dict:
@@ -204,12 +208,13 @@ def load_agents_config() -> dict:
     return _DEFAULT_AGENTS_CONFIG
 
 
-def build_instrumentation_engineer() -> Agent:
-    cfg = load_agents_config().get("instrumentation_engineer", _DEFAULT_AGENTS_CONFIG["instrumentation_engineer"])
+def build_instrumentation_agent() -> Agent:
+    cfg = load_agents_config()
+    agent_cfg = cfg.get("instrumentation_agent") or cfg.get("instrumentation_engineer", _DEFAULT_AGENTS_CONFIG["instrumentation_agent"])
     return Agent(
-        role=cfg["role"],
-        goal=cfg["goal"],
-        backstory=cfg["backstory"].strip(),
+        role=agent_cfg["role"],
+        goal=agent_cfg["goal"],
+        backstory=agent_cfg["backstory"].strip(),
         tools=[
             _infer_schema_tool,
             _generate_mv_tool,
@@ -217,18 +222,19 @@ def build_instrumentation_engineer() -> Agent:
         ],
         llm=llm(),
         memory=False,
-        verbose=cfg.get("verbose", True),
-        allow_delegation=cfg.get("allow_delegation", False),
-        max_iter=cfg.get("max_iter", 5),
+        verbose=agent_cfg.get("verbose", True),
+        allow_delegation=agent_cfg.get("allow_delegation", False),
+        max_iter=agent_cfg.get("max_iter", 5),
     )
 
 
-def build_context_librarian() -> Agent:
-    cfg = load_agents_config().get("context_librarian", _DEFAULT_AGENTS_CONFIG["context_librarian"])
+def build_context_agent() -> Agent:
+    cfg = load_agents_config()
+    agent_cfg = cfg.get("context_agent") or cfg.get("context_librarian", _DEFAULT_AGENTS_CONFIG["context_agent"])
     return Agent(
-        role=cfg["role"],
-        goal=cfg["goal"],
-        backstory=cfg["backstory"].strip(),
+        role=agent_cfg["role"],
+        goal=agent_cfg["goal"],
+        backstory=agent_cfg["backstory"].strip(),
         tools=[
             _consult_internal_tables_tool,
             _context_diff_tool,
@@ -237,45 +243,48 @@ def build_context_librarian() -> Agent:
         ],
         llm=llm(),
         memory=False,
-        verbose=cfg.get("verbose", True),
-        allow_delegation=cfg.get("allow_delegation", False),
-        max_iter=cfg.get("max_iter", 5),
+        verbose=agent_cfg.get("verbose", True),
+        allow_delegation=agent_cfg.get("allow_delegation", False),
+        max_iter=agent_cfg.get("max_iter", 5),
     )
 
 
-def build_product_analyst() -> Agent:
-    cfg = load_agents_config().get("product_analyst", _DEFAULT_AGENTS_CONFIG["product_analyst"])
+def build_analytics_agent() -> Agent:
+    cfg = load_agents_config()
+    agent_cfg = cfg.get("analytics_agent") or cfg.get("product_analyst", _DEFAULT_AGENTS_CONFIG["analytics_agent"])
     return Agent(
-        role=cfg["role"],
-        goal=cfg["goal"],
-        backstory=cfg["backstory"].strip(),
+        role=agent_cfg["role"],
+        goal=agent_cfg["goal"],
+        backstory=agent_cfg["backstory"].strip(),
         tools=[_analytics_compute_tool, _score_confidence_tool],
         llm=llm(),
         memory=False,
-        verbose=cfg.get("verbose", True),
-        allow_delegation=cfg.get("allow_delegation", False),
-        max_iter=cfg.get("max_iter", 5),
+        verbose=agent_cfg.get("verbose", True),
+        allow_delegation=agent_cfg.get("allow_delegation", False),
+        max_iter=agent_cfg.get("max_iter", 5),
     )
 
 
 def build_query_architect() -> Agent:
-    cfg = load_agents_config().get("query_architect", _DEFAULT_AGENTS_CONFIG["query_architect"])
+    cfg = load_agents_config()
+    agent_cfg = cfg.get("query_architect", _DEFAULT_AGENTS_CONFIG["query_architect"])
     return Agent(
-        role=cfg["role"],
-        goal=cfg["goal"],
-        backstory=cfg["backstory"].strip(),
+        role=agent_cfg["role"],
+        goal=agent_cfg["goal"],
+        backstory=agent_cfg["backstory"].strip(),
         tools=[],
         llm=llm(),
         memory=False,
-        verbose=cfg.get("verbose", True),
-        allow_delegation=cfg.get("allow_delegation", False),
-        max_iter=cfg.get("max_iter", 5),
+        verbose=agent_cfg.get("verbose", True),
+        allow_delegation=agent_cfg.get("allow_delegation", False),
+        max_iter=agent_cfg.get("max_iter", 5),
     )
 
 
 # Agent naming aliases matching problem statement and locked CUJ specifications
-build_instrumentation_agent = build_instrumentation_engineer
-build_context_agent = build_context_librarian
-build_analytics_agent = build_product_analyst
+build_instrumentation_engineer = build_instrumentation_agent
+build_context_librarian = build_context_agent
+build_product_analyst = build_analytics_agent
+
 
 

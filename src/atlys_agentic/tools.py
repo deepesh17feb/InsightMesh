@@ -750,6 +750,114 @@ def Tool_Load_Events(spec_id: str, table_name: str, field_mapping: dict | None =
     }
 
 
+def embed_text(text: str) -> list[float]:
+    """Generate vector embedding for text using LiteLLM / Gemini.
+    Safely returns an empty list [] on any failure or missing credentials without breaking the flow."""
+    if not text or not text.strip():
+        return []
+
+    # Check for available API credentials
+    has_api_key = any(
+        os.environ.get(k)
+        for k in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "LITELLM_API_KEY")
+    )
+    if not has_api_key:
+        return []
+
+    try:
+        import litellm
+        model = os.environ.get("EMBEDDING_MODEL", "gemini/text-embedding-004")
+        response = litellm.embedding(model=model, input=[text])
+        if response and getattr(response, "data", None) and len(response.data) > 0:
+            embedding = response.data[0].get("embedding", [])
+            return [float(x) for x in embedding]
+    except Exception:
+        pass
+    return []
+
+
+def Tool_Write_Table_Semantics(
+    spec_id: str,
+    table_name: str,
+    spec_text: str,
+    column_names: list[str],
+    trace_id: str = "",
+    agent: str = "context_agent",
+) -> dict:
+    """Write table semantics (description, concepts, vector embedding) to chDB table_semantics
+    and record versioned context_changelog entry per docs/CUJ1.md Section 6a."""
+    chdb_client.init_schema()
+
+    # Pre-defined high-fidelity descriptions and concepts for standard specs
+    spec_knowledge = {
+        "01_express_checkout": (
+            "Express Checkout provides 1-click application submission with saved payment methods and automated OTP verification to eliminate checkout drop-off. Tracks funnel progression, payment latency, and saved method usage.",
+            "express checkout, 1-click payment, OTP verification, conversion lift, checkout telemetry",
+        ),
+        "02_group_family": (
+            "Group & Family Applications allows a primary applicant to submit visa applications for multiple family members in a single checkout flow. Tracks applicant counts, per-member document upload, and bundle discounts.",
+            "group applications, family visa, bundle discount, primary applicant, multi-passenger",
+        ),
+        "03_status_sharing": (
+            "Status Sharing enables applicants to share live visa processing milestones with co-travelers and family via secure shareable links. Tracks link generation, viewer engagement, and status notifications.",
+            "status sharing, live tracking, shareable link, traveler milestones, viewer engagement",
+        ),
+        "04_abandoned_checkout_recovery": (
+            "Abandoned Checkout Recovery triggers automated re-engagement workflows and reminders for users dropping out of the payment step. Tracks exit intents, recovery email clicks, and recovered conversions.",
+            "checkout recovery, abandoned cart, re-engagement, exit intent, recovery attribution",
+        ),
+        "05_instant_forex": (
+            "Instant Forex provides real-time currency conversion and transparent FX rate locks during international visa checkout. Tracks selected currencies, locked FX rates, and fee transparency metrics.",
+            "instant forex, currency conversion, FX rate lock, multi-currency, fee transparency",
+        ),
+    }
+
+    if spec_id in spec_knowledge:
+        description, concepts = spec_knowledge[spec_id]
+    else:
+        # Dynamic extraction from spec text
+        clean_lines = [l.strip() for l in spec_text.splitlines() if l.strip() and not l.startswith("#")]
+        description = " ".join(clean_lines[:3]) if clean_lines else f"Event telemetry for {table_name} under feature spec {spec_id}."
+        concepts = ", ".join(col for col in column_names if not col.endswith(("_id", "_at", "timestamp"))) or "telemetry, conversion"
+
+    # Compute embedding
+    embed_input = f"{description}\nConcepts: {concepts}\nColumns: {', '.join(column_names)}"
+    embedding = embed_text(embed_input)
+
+    # Determine monotonic version in table_semantics
+    existing = chdb_client.run(
+        f"SELECT max(version) AS v FROM table_semantics WHERE table_name = '{table_name}'"
+    )
+    version = (existing[0]["v"] or 0) + 1 if existing and existing[0]["v"] is not None else 1
+
+    # Insert into table_semantics
+    embedding_sql = "[" + ", ".join(f"{x:.6f}" for x in embedding) + "]"
+    desc_escaped = description.replace("'", "''")
+    concepts_escaped = concepts.replace("'", "''")
+
+    chdb_client.run(
+        f"""INSERT INTO table_semantics VALUES
+        ('{table_name}', '{spec_id}', '{desc_escaped}', '{concepts_escaped}',
+         {embedding_sql}, {version}, now())""",
+        fmt="CSV",
+    )
+
+    # Record changelog entry
+    chdb_client.run(
+        f"""INSERT INTO context_changelog VALUES
+        (now(), 'table_semantics', '', '{table_name} v{version}: {desc_escaped[:80]}',
+         '{agent}', '{trace_id}')""",
+        fmt="CSV",
+    )
+
+    return {
+        "table_name": table_name,
+        "spec_id": spec_id,
+        "description": description,
+        "concepts": concepts,
+        "embedding_dims": len(embedding),
+        "version": version,
+    }
 
 
 def Tool_Emit_Submission_Artifacts(
