@@ -432,13 +432,24 @@ def _render_cuj2_investigation(available_specs: list[str]):
                 spec_id = auto_spec
                 base_sql = f"SELECT * FROM {auto_table}"
 
+        has_question = bool(question and question.strip())
+        if not has_question:
+            st.info("💡 **Tip**: Enter your diagnostic question above, or select Scenario 1–3 from the presets.")
+
         st.caption("⚡ **Live Data Engine**: Queries ClickHouse Cloud live with automatic fallback to high-speed embedded chDB event aggregations.")
-        run_investigation = st.button("🔍 Run Live Root-Cause Investigation", type="primary", use_container_width=True)
+        run_investigation = st.button(
+            "🔍 Run Live Root-Cause Investigation",
+            type="primary",
+            use_container_width=True,
+            disabled=not has_question,
+        )
 
     with col_results:
         st.subheader("2. Investigation Findings & 3-View Snapshot")
 
-        if run_investigation or "analysis_result" in st.session_state:
+        if not has_question and "analysis_result" not in st.session_state:
+            st.info("👈 Enter a diagnostic question on the left to start the autonomous root-cause investigation.")
+        elif run_investigation or "analysis_result" in st.session_state:
             if run_investigation:
                 with st.spinner("Product Analyst & Context Librarian slicing live multi-cut dimensions & checking known issues..."):
                     chdb_client.init_schema()
