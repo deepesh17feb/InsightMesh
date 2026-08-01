@@ -286,7 +286,10 @@ def _render_cuj1_ingestion(available_specs: list[str]):
                 with st.spinner("Instrumentation Engineer consulting tables & inferring schema..."):
                     chdb_client.init_schema()
                     chdb_client.init_base_context()
-                    proposal = ingestion_flow.run(spec_id=selected_spec, table_name=table_name_input, dry_run=True)
+                    try:
+                        proposal = ingestion_flow.run(spec_id=selected_spec, table_name=table_name_input, dry_run=True)
+                    except TypeError:
+                        proposal = ingestion_flow.run(spec_id=selected_spec, table_name=table_name_input)
                     st.session_state["proposal"] = proposal
                     st.session_state["last_spec"] = selected_spec
                     st.session_state["last_table"] = proposal.get("table_name", "")
@@ -356,19 +359,25 @@ def _render_cuj1_ingestion(available_specs: list[str]):
 
                 if st.button("🚀 Approve & Deploy to ClickHouse Cloud", type="secondary", disabled=not confirm, width="stretch"):
                     with st.spinner("Executing DDL on ClickHouse Cloud and recording version..."):
-                        result = ingestion_flow.run(
-                            spec_id=selected_spec,
-                            table_name=resolved_table,
-                            input_fn=lambda _: "APPROVE",
-                            dry_run=False,
-                        )
+                        try:
+                            result = ingestion_flow.run(
+                                spec_id=selected_spec,
+                                table_name=resolved_table,
+                                input_fn=lambda _: "APPROVE",
+                                dry_run=False,
+                            )
+                        except TypeError:
+                            result = ingestion_flow.run(
+                                spec_id=selected_spec,
+                                table_name=resolved_table,
+                                input_fn=lambda _: "APPROVE",
+                            )
                         if result.get("approved"):
                             st.balloons()
                             st.success(f"🎉 Successfully deployed `{resolved_table}` to ClickHouse Cloud and registered version in `chDB.schema_registry`!")
                         else:
                             st.error(f"Deployment rejected or failed: {result}")
             else:
-                st.caption("🔒 *Dry-Run Active: ClickHouse Cloud and chDB were not modified.*")
                 st.caption("🔒 *Dry-Run Active: ClickHouse Cloud and chDB were not modified.*")
 
 
