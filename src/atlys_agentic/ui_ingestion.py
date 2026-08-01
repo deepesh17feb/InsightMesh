@@ -115,6 +115,14 @@ def render_app():
                 with st.expander("📈 Proposed Materialized View (SummingMergeTree)", expanded=True):
                     st.code(mv_ddl, language="sql")
 
+            consult = proposal.get("table_consultation", {})
+            reasoning = proposal.get("reasoning", {})
+            if reasoning or consult:
+                with st.expander("🧠 Agent Architectural Reasoning & Table Consultation", expanded=True):
+                    st.info(f"**Consultation Decision:** `{consult.get('strategy', 'CREATE_NEW')}`\n\n{consult.get('recommendation', '')}")
+                    if reasoning.get("full_markdown"):
+                        st.markdown(reasoning["full_markdown"])
+
             diff = proposal.get("diff_result", {})
             with st.expander("📚 Context Diff Audit (Context Librarian)", expanded=True):
                 additions = diff.get("additions", [])

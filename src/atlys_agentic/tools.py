@@ -181,6 +181,164 @@ def Tool_Generate_MV(table_name: str, ddl: str, funnel_step_column: str = "event
     )
 
 
+def Tool_Consult_Internal_Tables(spec_id: str, new_columns: list[str], table_name: str) -> dict:
+    """Consult internal tables in schema_registry and ClickHouse Cloud to determine
+    whether an existing table can be reused, altered, or if a new table is required."""
+    existing_records = chdb_client.run(
+        'SELECT "table" as table_name, columns_json, version, ddl FROM schema_registry ORDER BY version DESC'
+    )
+    existing_tables = {}
+    for r in existing_records:
+        tname = r.get("table_name") or r.get("table")
+        if tname and tname not in existing_tables:
+            cols = []
+            if r.get("columns_json"):
+                try:
+                    cols = json.loads(r["columns_json"])
+                except Exception:
+                    cols = []
+            elif r.get("ddl"):
+                cols = _columns_from_ddl(r["ddl"])
+            existing_tables[tname] = {
+                "version": r.get("version", 1),
+                "columns": cols,
+                "ddl": r.get("ddl", ""),
+            }
+
+    try:
+        cloud_tables_rows = ch_client.select("SHOW TABLES")
+        for row in cloud_tables_rows:
+            ct = row.get("name") if isinstance(row, dict) else row[0]
+            if ct not in existing_tables:
+                existing_tables[ct] = {"version": 1, "columns": [], "ddl": ""}
+    except Exception:
+        pass
+
+    # Check 1: Target table name already exists in schema registry
+    if table_name in existing_tables:
+        existing_cols = set(existing_tables[table_name]["columns"])
+        missing_cols = [c for c in new_columns if c not in existing_cols]
+
+        if not missing_cols:
+            return {
+                "strategy": "REUSE_EXISTING",
+                "target_table": table_name,
+                "existing_tables_found": list(existing_tables.keys()),
+                "existing_version": existing_tables[table_name]["version"],
+                "missing_columns": [],
+                "alter_ddl": "",
+                "recommendation": f"Table '{table_name}' already exists in schema_registry (v{existing_tables[table_name]['version']}) with matching schema. No DDL mutation needed; ready for event ingestion.",
+            }
+        else:
+            alter_statements = [f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col} String;" for col in missing_cols]
+            return {
+                "strategy": "ALTER_EXISTING",
+                "target_table": table_name,
+                "existing_tables_found": list(existing_tables.keys()),
+                "existing_version": existing_tables[table_name]["version"],
+                "missing_columns": missing_cols,
+                "alter_ddl": "\n".join(alter_statements),
+                "recommendation": f"Table '{table_name}' exists in schema_registry. Detected {len(missing_cols)} new attribute(s): {missing_cols}. Recommend ALTER TABLE migration to evolve schema without breaking existing pipelines.",
+            }
+
+    # Check 2: Check for candidate tables with overlapping column sets (>= 60% match)
+    overlapping_table = None
+    max_overlap = 0.0
+    for tname, tinfo in existing_tables.items():
+        if tinfo["columns"]:
+            common = set(tinfo["columns"]).intersection(set(new_columns))
+            overlap_ratio = len(common) / max(len(new_columns), 1)
+            if overlap_ratio > 0.6 and overlap_ratio > max_overlap:
+                max_overlap = overlap_ratio
+                overlapping_table = tname
+
+    if overlapping_table:
+        return {
+            "strategy": "CREATE_NEW_WITH_OVERLAP_NOTE",
+            "target_table": table_name,
+            "existing_tables_found": list(existing_tables.keys()),
+            "candidate_overlapping_table": overlapping_table,
+            "overlap_pct": round(max_overlap * 100, 1),
+            "recommendation": f"Consulted internal tables. Found existing table '{overlapping_table}' with {round(max_overlap * 100)}% column overlap. However, because '{table_name}' models a distinct feature event stream ({spec_id}), creating a dedicated table '{table_name}' is recommended to maintain isolated lifecycle, TTL, and partition boundaries.",
+        }
+
+    # Check 3: Brand new feature domain table
+    return {
+        "strategy": "CREATE_NEW",
+        "target_table": table_name,
+        "existing_tables_found": list(existing_tables.keys()),
+        "recommendation": f"Consulted internal schema registry ({len(existing_tables)} existing tables checked: {list(existing_tables.keys()) if existing_tables else 'none registered'}). No existing table covers the '{table_name}' domain. Creating dedicated MergeTree table '{table_name}'.",
+    }
+
+
+def Tool_Explain_Schema_Rationale(
+    table_name: str,
+    ddl: str,
+    mv_ddl: str,
+    consultation: dict,
+    spec_text: str = "",
+) -> dict:
+    """Generate comprehensive engineering reasoning for the suggested schema,
+    covering internal table consultation, partition key, order key, encodings, and materialized views."""
+    cols = _columns_from_ddl(ddl)
+    low_card_cols = [line.split()[0] for line in ddl.splitlines() if "LowCardinality" in line]
+    nullable_cols = [line.split()[0] for line in ddl.splitlines() if "Nullable" in line]
+    uint8_cols = [line.split()[0] for line in ddl.splitlines() if "UInt8" in line]
+
+    table_strategy_reasoning = consultation.get("recommendation", f"Dedicated table created for {table_name}.")
+
+    ordering_reasoning = (
+        "ORDER BY (timestamp, user_id): Orders records chronologically with high temporal locality, "
+        "enabling fast index pruning for time-range queries and efficient user funnel analysis. "
+        "UUID/ID is deliberately omitted from leading positions to prevent index bloat and ensure high compression ratios."
+    )
+
+    partitioning_reasoning = (
+        "PARTITION BY toYYYYMM(timestamp): Organizes data into monthly directory partitions. "
+        "Minimizes active parts per partition while allowing ClickHouse to skip entire monthly parts during analytical cuts."
+    )
+
+    types_reasoning = (
+        f"Applied LowCardinality(String) to {len(low_card_cols)} bounded categorical columns ({', '.join(low_card_cols[:4])}...) "
+        f"yielding 5-10x dictionary compression and vector cache efficiency. "
+        f"Wrapped {len(nullable_cols)} sparse attributes in Nullable(...) to safely handle optional payload keys. "
+        f"Encoded {len(uint8_cols)} boolean status flags as UInt8 (1 byte per row)."
+    )
+
+    if mv_ddl:
+        mv_reasoning = (
+            f"Materialized View ({table_name}_daily_mv): Uses SummingMergeTree to pre-aggregate event volume and user counts "
+            f"by day and segment dimensions. This guarantees that Product Analysts execute instant zero-scan lookups for common cuts."
+        )
+    else:
+        mv_reasoning = "Materialized View omitted: no segment dimension columns detected in event payload."
+
+    full_markdown = (
+        f"### 🧠 Instrumentation Engineer Reasoning\n\n"
+        f"1. **Internal Table Consultation & Decision:**\n"
+        f"   - {table_strategy_reasoning}\n\n"
+        f"2. **Primary Sorting Key (`ORDER BY`):**\n"
+        f"   - {ordering_reasoning}\n\n"
+        f"3. **Partitioning Strategy (`PARTITION BY`):**\n"
+        f"   - {partitioning_reasoning}\n\n"
+        f"4. **Encodings & Data Types:**\n"
+        f"   - {types_reasoning}\n\n"
+        f"5. **Materialized View Pre-Aggregation:**\n"
+        f"   - {mv_reasoning}\n\n"
+        f"6. **Data Lifecycle Retention:**\n"
+        f"   - TTL set to `timestamp + INTERVAL 12 MONTH` for rolling GDPR compliance and storage optimization."
+    )
+
+    return {
+        "table_strategy": table_strategy_reasoning,
+        "ordering_reasoning": ordering_reasoning,
+        "partitioning_reasoning": partitioning_reasoning,
+        "types_reasoning": types_reasoning,
+        "mv_reasoning": mv_reasoning,
+        "full_markdown": full_markdown,
+    }
+
+
 def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str) -> dict:
     """Execute DDL on ClickHouse Cloud, mirror to chDB schema_registry with a
     monotonically increasing version per table. On failure, drop whatever

@@ -82,6 +82,8 @@ def propose_ingestion(req: IngestionRequest):
         "ddl": result.get("ddl", ""),
         "mv_ddl": result.get("mv_ddl", ""),
         "diff_result": result.get("diff_result", {}),
+        "table_consultation": result.get("table_consultation", {}),
+        "reasoning": result.get("reasoning", {}),
         "trace_id": result.get("trace_id", ""),
     }
 
@@ -257,6 +259,12 @@ _INGESTION_HTML = """<!DOCTYPE html>
             <pre id="mvOutput"></pre>
           </div>
 
+          <div class="section-box" id="reasoningBox" style="display: none; background: rgba(30, 41, 59, 0.7); border-left: 3px solid #3B82F6;">
+            <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: #93C5FD;">🧠 Instrumentation Engineer Rationale & Table Consultation</h3>
+            <div id="consultationBanner" style="font-size: 0.85rem; color: #E2E8F0; margin-bottom: 0.6rem;"></div>
+            <div id="reasoningDetails" style="font-size: 0.85rem; color: #CBD5E1; line-height: 1.5; white-space: pre-wrap;"></div>
+          </div>
+
           <div class="section-box">
             <h3 style="font-size: 0.95rem; margin-bottom: 0.4rem; color: #94A3B8;">Context Diff Audit (Context Librarian)</h3>
             <div id="diffSummary" style="font-size: 0.85rem; margin-bottom: 0.5rem;"></div>
@@ -332,6 +340,15 @@ _INGESTION_HTML = """<!DOCTYPE html>
           document.getElementById('mvOutput').textContent = data.mv_ddl;
         } else {
           document.getElementById('mvBox').style.display = 'none';
+        }
+
+        if (data.reasoning && (data.reasoning.full_markdown || data.reasoning.table_strategy)) {
+          document.getElementById('reasoningBox').style.display = 'block';
+          const consult = data.table_consultation || {};
+          document.getElementById('consultationBanner').innerHTML = `<strong>Consultation Strategy:</strong> <code>${consult.strategy || 'CREATE_NEW'}</code><br><span style="color:#94A3B8;">${consult.recommendation || ''}</span>`;
+          document.getElementById('reasoningDetails').textContent = data.reasoning.full_markdown || JSON.stringify(data.reasoning, null, 2);
+        } else {
+          document.getElementById('reasoningBox').style.display = 'none';
         }
 
         const diffTags = document.getElementById('diffTags');

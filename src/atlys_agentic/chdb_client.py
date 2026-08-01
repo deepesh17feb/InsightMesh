@@ -57,6 +57,23 @@ def _get_sqlite_conn():
     db_file = paths.CHDB_PATH / "metadata.sqlite"
     conn = sqlite3.connect(str(db_file), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    with conn:
+        cursor = conn.cursor()
+        for ddl in SCHEMA_DDL:
+            clean = re.sub(r"\)\s*ENGINE\s*=.*$", ")", ddl, flags=re.DOTALL | re.IGNORECASE)
+            clean = re.sub(r"\bUInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
+            clean = re.sub(r"\bInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
+            clean = re.sub(r"\bFloat\d+\b", "REAL", clean, flags=re.IGNORECASE)
+            clean = re.sub(r"\bDateTime\b", "TEXT", clean, flags=re.IGNORECASE)
+            clean = re.sub(r"\bString\b", "TEXT", clean, flags=re.IGNORECASE)
+            clean = re.sub(r"\bLowCardinality\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
+            clean = re.sub(r"\bNullable\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
+            clean = re.sub(r"\bUUID\b", "TEXT", clean, flags=re.IGNORECASE)
+            clean = re.sub(r"\btable\s+TEXT\b", '"table" TEXT', clean, flags=re.IGNORECASE)
+            try:
+                cursor.execute(clean)
+            except Exception:
+                pass
     return conn
 
 
