@@ -140,14 +140,14 @@ def generation(
 def trace_url() -> str | None:
     """Safe to call after the trace() block has exited — returns the captured trace URL."""
     global _current_trace_url, _current_trace_id
+    if _current_trace_id is None:
+        return None
     if _current_trace_url:
         return _current_trace_url
-    if _current_trace_id:
-        try:
-            return client().get_trace_url(trace_id=_current_trace_id)
-        except Exception:
-            return None
-    return None
+    try:
+        return client().get_trace_url(trace_id=_current_trace_id)
+    except Exception:
+        return None
 
 
 def new_trace(spec_id: str, run_mode: str | None = None) -> str:
