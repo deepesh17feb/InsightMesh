@@ -82,7 +82,11 @@ These names are used everywhere — prose, diagrams, Langfuse span names, and co
 | **Context Agent** | All data. chDB refresh, context package, strategy decision, semantic audit, DDL execution, event loading, registry + context sync. | Designs schemas. Translates intent into SQL. | `refresh_chdb_from_live`, `build_context_package`, `decide_strategy`, `context_diff`, `execute_ddl`, `load_events`, `register_schema_version`, `context_upsert`, `append_context_changelog`, `write_table_semantics` |
 | **Instrumentation Agent** | Schema design — ordering key, partitioning, column types, TTL, MV justification, event→column field mapping. LLM-driven. | Touches any database. Emits SQL. | `design_schema` (LLM) |
 | **Query Architect** | Rendering design intent into ClickHouse DDL, MV DDL, and the `INSERT` statement. **Shared with CUJ 2**, where the same agent emits `SELECT` statements — see `docs/CUJ2.md` § 3. | Touches any database. Makes design decisions. | `design_to_ddl` (LLM) |
-| **Human operator** | The approval gate. | — | LibreChat `APPROVE` |
+
+**The Human operator is not an agent.** They own the approval gate (phase 10) by typing
+`APPROVE` in LibreChat. Deliberately kept out of the roster above: the gate exists precisely
+because a human, not an agent, authorises production DDL. The `human::approval_gate` span
+records the decision but carries no `metadata.agent` — see § 7.
 
 **What "never writes SQL" means.** The boundary is *translation*, not the presence of SQL
 strings. Turning intent — a design, a question, a metric formula — into SQL belongs to the
@@ -371,11 +375,15 @@ Every span carries three things:
 | :--- | :--- |
 | `input` | what the step received |
 | `output` | what it produced |
-| `metadata.agent` | `context_agent` / `instrumentation_agent` / `query_architect` / `human` |
+| `metadata.agent` | `context_agent` / `instrumentation_agent` / `query_architect` |
 | `metadata.why` | one sentence explaining the decision |
 
 `metadata.why` is what turns a timing log into the reasoning chain judges are told to
 follow. A span without it is not traceable in the sense the problem statement means.
+
+`human::approval_gate` is the one span with **no `metadata.agent`** — the approval is a human
+decision, not agent work, and labelling it with an agent would misattribute the authorisation
+that the whole gate exists to record. It still carries `input`, `output` and `why`.
 
 ### Trace URL
 
