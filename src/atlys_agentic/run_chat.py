@@ -260,9 +260,13 @@ _INGESTION_HTML = """<!DOCTYPE html>
           </div>
 
           <div class="section-box" id="reasoningBox" style="display: none; background: rgba(30, 41, 59, 0.7); border-left: 3px solid #3B82F6;">
-            <h3 style="font-size: 0.95rem; margin-bottom: 0.6rem; color: #93C5FD;">🧠 Instrumentation Engineer Rationale & Table Consultation</h3>
-            <div id="consultationBanner" style="font-size: 0.85rem; color: #E2E8F0; margin-bottom: 0.6rem;"></div>
-            <div id="reasoningDetails" style="font-size: 0.85rem; color: #CBD5E1; line-height: 1.5; white-space: pre-wrap;"></div>
+            <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: #93C5FD;">🧠 Instrumentation Engineer Rationale</h3>
+            <div id="consultationBanner" style="font-size: 0.85rem; color: #E2E8F0; margin-bottom: 0.5rem;"></div>
+            <div id="executiveSummary" style="font-size: 0.85rem; color: #93C5FD; background: rgba(15, 23, 42, 0.6); padding: 0.65rem 0.85rem; border-radius: 6px; margin-bottom: 0.6rem; border-left: 2px solid #60A5FA;"></div>
+            <details style="cursor: pointer;">
+              <summary style="font-size: 0.85rem; font-weight: 600; color: #60A5FA; user-select: none;">🔍 View Technical Deep Dive & Storage Mechanics</summary>
+              <div id="reasoningDetails" style="margin-top: 0.5rem; font-size: 0.82rem; color: #CBD5E1; line-height: 1.5; white-space: pre-wrap; background: rgba(15, 23, 42, 0.8); padding: 0.75rem; border-radius: 6px;"></div>
+            </details>
           </div>
 
           <div class="section-box">
@@ -342,11 +346,20 @@ _INGESTION_HTML = """<!DOCTYPE html>
           document.getElementById('mvBox').style.display = 'none';
         }
 
-        if (data.reasoning && (data.reasoning.full_markdown || data.reasoning.table_strategy)) {
+        if (data.reasoning && (data.reasoning.high_level_summary || data.reasoning.table_strategy)) {
           document.getElementById('reasoningBox').style.display = 'block';
           const consult = data.table_consultation || {};
           document.getElementById('consultationBanner').innerHTML = `<strong>Consultation Strategy:</strong> <code>${consult.strategy || 'CREATE_NEW'}</code><br><span style="color:#94A3B8;">${consult.recommendation || ''}</span>`;
-          document.getElementById('reasoningDetails').textContent = data.reasoning.full_markdown || JSON.stringify(data.reasoning, null, 2);
+          document.getElementById('executiveSummary').innerHTML = `<strong>High-Level Summary:</strong> ${data.reasoning.high_level_summary || data.reasoning.table_strategy || ''}`;
+          
+          let deepText = '';
+          if (data.reasoning.technical_deep_dive) {
+            const d = data.reasoning.technical_deep_dive;
+            deepText = `• Sorting Key (ORDER BY):\n  ${d.ordering_mechanics}\n\n• Partitioning Strategy:\n  ${d.partitioning_mechanics}\n\n• Encodings & Compression:\n  ${d.column_encodings_and_compression}\n\n• Pre-Aggregation Rollup:\n  ${d.materialized_view_rollup}\n\n• Lifecycle Retention (TTL):\n  ${d.lifecycle_retention}`;
+          } else {
+            deepText = data.reasoning.full_markdown || JSON.stringify(data.reasoning, null, 2);
+          }
+          document.getElementById('reasoningDetails').textContent = deepText;
         } else {
           document.getElementById('reasoningBox').style.display = 'none';
         }

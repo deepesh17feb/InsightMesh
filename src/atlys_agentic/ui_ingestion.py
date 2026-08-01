@@ -118,9 +118,18 @@ def render_app():
             consult = proposal.get("table_consultation", {})
             reasoning = proposal.get("reasoning", {})
             if reasoning or consult:
-                with st.expander("🧠 Agent Architectural Reasoning & Table Consultation", expanded=True):
-                    st.info(f"**Consultation Decision:** `{consult.get('strategy', 'CREATE_NEW')}`\n\n{consult.get('recommendation', '')}")
-                    if reasoning.get("full_markdown"):
+                with st.expander("🧠 Instrumentation Engineer Rationale & Table Consultation", expanded=True):
+                    st.info(f"**Architecture Decision:** `{consult.get('strategy', 'CREATE_NEW')}`\n\n**Executive Summary:** {reasoning.get('high_level_summary', consult.get('recommendation', ''))}")
+                    deep = reasoning.get("technical_deep_dive", {})
+                    if deep:
+                        with st.expander("🔍 Technical Deep Dive & Storage Mechanics", expanded=False):
+                            st.markdown(f"- **Table Strategy:** {deep.get('table_strategy', '')}")
+                            st.markdown(f"- **Primary Sorting Key (`ORDER BY`):** {deep.get('ordering_mechanics', '')}")
+                            st.markdown(f"- **Partitioning Strategy (`PARTITION BY`):** {deep.get('partitioning_mechanics', '')}")
+                            st.markdown(f"- **Encodings & Compression:** {deep.get('column_encodings_and_compression', '')}")
+                            st.markdown(f"- **Rollup Materialized View:** {deep.get('materialized_view_rollup', '')}")
+                            st.markdown(f"- **Lifecycle Retention (TTL):** {deep.get('lifecycle_retention', '')}")
+                    elif reasoning.get("full_markdown"):
                         st.markdown(reasoning["full_markdown"])
 
             diff = proposal.get("diff_result", {})

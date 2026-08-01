@@ -278,15 +278,23 @@ def Tool_Explain_Schema_Rationale(
     consultation: dict,
     spec_text: str = "",
 ) -> dict:
-    """Generate comprehensive engineering reasoning for the suggested schema,
-    covering internal table consultation, partition key, order key, encodings, and materialized views."""
+    """Generate high-level executive summary and foldable technical deep dive for the suggested schema."""
     cols = _columns_from_ddl(ddl)
     low_card_cols = [line.split()[0] for line in ddl.splitlines() if "LowCardinality" in line]
     nullable_cols = [line.split()[0] for line in ddl.splitlines() if "Nullable" in line]
     uint8_cols = [line.split()[0] for line in ddl.splitlines() if "UInt8" in line]
 
-    table_strategy_reasoning = consultation.get("recommendation", f"Dedicated table created for {table_name}.")
+    strategy_desc = consultation.get("recommendation", f"Dedicated table created for {table_name}.")
 
+    # 1. High-Level Executive Summary
+    mv_summary_phrase = f"plus a `{table_name}_daily_mv` pre-aggregation rollup" if mv_ddl else "without extra rollups"
+    high_level_summary = (
+        f"Proposes dedicated table `{table_name}` ordered by `(timestamp, user_id)` with monthly `toYYYYMM` partitioning, "
+        f"{len(low_card_cols)} dictionary-encoded columns (`LowCardinality` for 5–10× compression), "
+        f"{mv_summary_phrase}, and a 12-month rolling data retention TTL."
+    )
+
+    # 2. Deep Dive Sections
     ordering_reasoning = (
         "ORDER BY (timestamp, user_id): Orders records chronologically with high temporal locality, "
         "enabling fast index pruning for time-range queries and efficient user funnel analysis. "
@@ -313,10 +321,25 @@ def Tool_Explain_Schema_Rationale(
     else:
         mv_reasoning = "Materialized View omitted: no segment dimension columns detected in event payload."
 
+    retention_reasoning = "TTL timestamp + INTERVAL 12 MONTH: Automatically purges data older than 12 months in background merges for rolling GDPR compliance and cloud storage cost optimization."
+
+    technical_deep_dive = {
+        "table_strategy": strategy_desc,
+        "ordering_mechanics": ordering_reasoning,
+        "partitioning_mechanics": partitioning_reasoning,
+        "column_encodings_and_compression": types_reasoning,
+        "materialized_view_rollup": mv_reasoning,
+        "lifecycle_retention": retention_reasoning,
+    }
+
+    # 3. Foldable Full Markdown (Foldable <details> section)
     full_markdown = (
-        f"### 🧠 Instrumentation Engineer Reasoning\n\n"
+        f"### 🧠 Instrumentation Engineer Summary\n\n"
+        f"> **Executive Summary:** {high_level_summary}\n\n"
+        f"<details>\n"
+        f"<summary><b>🔍 Technical Deep Dive & Storage Mechanics (Click to expand)</b></summary>\n\n"
         f"1. **Internal Table Consultation & Decision:**\n"
-        f"   - {table_strategy_reasoning}\n\n"
+        f"   - {strategy_desc}\n\n"
         f"2. **Primary Sorting Key (`ORDER BY`):**\n"
         f"   - {ordering_reasoning}\n\n"
         f"3. **Partitioning Strategy (`PARTITION BY`):**\n"
@@ -326,15 +349,19 @@ def Tool_Explain_Schema_Rationale(
         f"5. **Materialized View Pre-Aggregation:**\n"
         f"   - {mv_reasoning}\n\n"
         f"6. **Data Lifecycle Retention:**\n"
-        f"   - TTL set to `timestamp + INTERVAL 12 MONTH` for rolling GDPR compliance and storage optimization."
+        f"   - {retention_reasoning}\n\n"
+        f"</details>"
     )
 
     return {
-        "table_strategy": table_strategy_reasoning,
+        "high_level_summary": high_level_summary,
+        "table_strategy": strategy_desc,
         "ordering_reasoning": ordering_reasoning,
         "partitioning_reasoning": partitioning_reasoning,
         "types_reasoning": types_reasoning,
         "mv_reasoning": mv_reasoning,
+        "retention_reasoning": retention_reasoning,
+        "technical_deep_dive": technical_deep_dive,
         "full_markdown": full_markdown,
     }
 
