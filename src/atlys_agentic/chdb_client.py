@@ -94,6 +94,7 @@ def _run_sqlite_fallback(sql: str, fmt: str = "JSON"):
         clean = re.sub(r"\bUUID\b", "TEXT", clean, flags=re.IGNORECASE)
         clean = re.sub(r"\btable\s+TEXT\b", '"table" TEXT', clean, flags=re.IGNORECASE)
 
+    clean = re.sub(r"^\s*TRUNCATE\s+TABLE\s+(\w+)", r"DELETE FROM \1", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bnow\(\)", "datetime('now')", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bcount\(\)", "count(*)", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bWHERE\s+table\b", 'WHERE "table"', clean, flags=re.IGNORECASE)
@@ -132,6 +133,10 @@ def init_schema() -> None:
 def init_base_context() -> int:
     """Chunk base_context.md into business_context rows, one row per
     numbered section (## N. Title) split further by list item / paragraph."""
+    try:
+        run("TRUNCATE TABLE business_context", fmt="CSV")
+    except Exception:
+        pass
     text = paths.BASE_CONTEXT_MD.read_text(encoding="utf-8")
     sections = re.split(r"\n## ", text)[1:]  # drop preamble before first "## "
     inserted = 0
