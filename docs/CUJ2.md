@@ -101,7 +101,7 @@ These names are used everywhere — prose, diagrams, Langfuse span names, and co
 | Agent | Owns | Never | Reads / writes |
 | :--- | :--- | :--- | :--- |
 | **Context Agent** | Catalog, table semantics, live profile probe, known-issue match, insight persistence. Sole writer. | Translates intent into SQL. Interprets results for the PM. | reads chDB + `system.tables` + aggregates; writes chDB |
-| **Query Architect** | Translating the interpretation into SELECT statements — 5 cuts, intersection, alt-denominator headline, baseline metric. **Shared with CUJ 1**, where the same persona emits DDL, MV and `INSERT` — see `docs/CUJ1.md` § 3. | Touches any database. Decides what a metric means. | nothing |
+| **Query Architect** | Translating the interpretation into SELECT statements — 5 cuts, intersection, alt-denominator headline, baseline metric. **Shared with CUJ 1**, where the same agent emits DDL, MV and `INSERT` — see `docs/CUJ1.md` § 3. | Touches any database. Decides what a metric means. | nothing |
 | **Analytics Agent** | Executing the plan, auditing results, deriving signals, scoring confidence, PM synthesis. | Translates intent into SQL. Writes to any database. | reads ClickHouse rows via aggregates only |
 
 **Plane rule:** metadata versus analytical data, not chDB versus ClickHouse. The Context Agent

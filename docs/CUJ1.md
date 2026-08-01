@@ -31,7 +31,7 @@ Maps to the problem statement's **Instrumentation Agent** deliverable:
 
 These were settled during design review. Recorded here so they are not relitigated.
 
-1. **LLM brain decides the schema, not a rule cascade.** The Instrumentation Agent
+1. **The LLM decides the schema, not a rule cascade.** The Instrumentation Agent
    reasons over spec text + event sample + context package. The previous deterministic
    type-inference cascade is retired as a *generator*.
 2. **Invariants become a validator, not a generator.** Four assertions run against the
@@ -80,7 +80,7 @@ These names are used everywhere — prose, diagrams, Langfuse span names, and co
 | :--- | :--- | :--- | :--- |
 | **Context Agent** | All data. chDB refresh, context package, strategy decision, semantic audit, DDL execution, event loading, registry + context sync. | Designs schemas. Translates intent into SQL. | `refresh_chdb_from_live`, `build_context_package`, `decide_strategy`, `context_diff`, `execute_ddl`, `load_events`, `register_schema_version`, `context_upsert`, `append_context_changelog` |
 | **Instrumentation Agent** | Schema design — ordering key, partitioning, column types, TTL, MV justification, event→column field mapping. LLM-driven. | Touches any database. Emits SQL. | `design_schema` (LLM) |
-| **Query Architect** | Rendering design intent into ClickHouse DDL, MV DDL, and the `INSERT` statement. **Shared with CUJ 2**, where the same persona emits `SELECT` statements — see `docs/CUJ2.md` § 3. | Touches any database. Makes design decisions. | `design_to_ddl` (LLM) |
+| **Query Architect** | Rendering design intent into ClickHouse DDL, MV DDL, and the `INSERT` statement. **Shared with CUJ 2**, where the same agent emits `SELECT` statements — see `docs/CUJ2.md` § 3. | Touches any database. Makes design decisions. | `design_to_ddl` (LLM) |
 | **Human operator** | The approval gate. | — | LibreChat `APPROVE` |
 
 **What "never writes SQL" means.** The boundary is *translation*, not the presence of SQL
@@ -111,7 +111,7 @@ flowchart TD
     CL3 -->|"not registered"| IE2
     CL3 -->|"exists, new columns"| IE2
 
-    IE2["<b>5 · Design schema — LLM brain</b><br/>ordering key · partitioning · column types · TTL<br/>MV justification · <b>event to column field mapping</b><br/><i>outputs design intent, not SQL</i>"]
+    IE2["<b>5 · Design schema — LLM-driven</b><br/>ordering key · partitioning · column types · TTL<br/>MV justification · <b>event to column field mapping</b><br/><i>outputs design intent, not SQL</i>"]
     IE2 -->|"design intent"| QA
 
     QA["<b>6 · Render to SQL</b><br/>CREATE TABLE / ALTER TABLE · CREATE MV · INSERT<br/><i>syntax only, no design decisions</i>"]
@@ -172,7 +172,7 @@ flowchart TD
 flowchart TD
     PROMPT(["<b>LibreChat message</b>"]) --> IE
 
-    IE["<b>Instrumentation Agent</b><br/>LLM brain — decides schema design<br/><i>no data access</i>"]
+    IE["<b>Instrumentation Agent</b><br/>LLM-driven — decides schema design<br/><i>no data access</i>"]
     CL["<b>Context Agent</b><br/>owns ALL data<br/>refresh · context · strategy · audit · deploy · load"]
     QA["<b>Query Architect</b><br/>design intent to DDL and INSERT<br/><i>no data access · shared with CUJ 2</i>"]
     OP(["<b>Human operator</b><br/>in LibreChat"])
@@ -480,7 +480,7 @@ the submission package; chat is the surface a human actually reads.
 > #### Materialized view
 >
 > ```sql
-> -- justification: pre-aggregates the three mandatory analyst cut dimensions daily,
+> -- justification: pre-aggregates the three mandatory Analytics Agent cut dimensions daily,
 > -- turning repeated funnel scans into partition-pruned lookups.
 > CREATE MATERIALIZED VIEW IF NOT EXISTS express_checkout_daily_mv
 > ENGINE = SummingMergeTree
@@ -525,7 +525,7 @@ the submission package; chat is the surface a human actually reads.
 > `application_id` is `Nullable(String)` in this event stream — it is absent on
 > `express_checkout_shown`, present only once an application exists. A nullable leading key
 > forces ClickHouse to sort nulls into their own range, which fragments the primary index and
-> makes time-range pruning ineffective for the exact queries the analyst runs.
+> makes time-range pruning ineffective for the exact queries the Analytics Agent runs.
 >
 > It is a good *secondary* key if you need per-application drill-down. Say
 > *"add application_id after user_id"* and I will regenerate the proposal.
