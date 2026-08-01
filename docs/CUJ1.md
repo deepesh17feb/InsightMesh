@@ -38,7 +38,7 @@ These were settled during design review. Recorded here so they are not relitigat
    produced DDL. A system prompt biases the model toward correct design; the validator
    guarantees the non-negotiables. Prompt for quality, assertion for safety.
 3. **Context Agent owns all data.** It is the only agent that touches chDB or
-   ClickHouse Cloud. The Engineer and the Query Architect have zero data access.
+   ClickHouse Cloud. The Instrumentation Agent and the Query Architect have zero data access.
 4. **chDB refreshes from live before every run.** `system.tables` / `system.columns` is
    ground truth for structure; `schema_registry` is a mirror, not an authority. Drift
    between them is surfaced as a governance finding, not silently overwritten.
@@ -213,7 +213,7 @@ flowchart TD
 
 **Plane rule:** metadata versus analytical data, not chDB versus ClickHouse. The Context Agent
 reads `system.columns` (structure, no rows) and owns chDB (semantics). It writes rows to
-ClickHouse Cloud only during the gated load. The Engineer and Query Architect read
+ClickHouse Cloud only during the gated load. The Instrumentation Agent and Query Architect read
 neither.
 
 ---
@@ -323,7 +323,7 @@ Every span carries three things:
 | :--- | :--- |
 | `input` | what the step received |
 | `output` | what it produced |
-| `metadata.agent` | `context_librarian` / `instrumentation_engineer` / `text_to_sql` / `human` |
+| `metadata.agent` | `context_agent` / `instrumentation_agent` / `query_architect` / `human` |
 | `metadata.why` | one sentence explaining the decision |
 
 `metadata.why` is what turns a timing log into the reasoning chain judges are told to
@@ -498,7 +498,7 @@ the submission package; chat is the surface a human actually reads.
 > #### Context audit
 >
 > - **13 new attributes** to sync into `business_context`
-> - **1 conflict:** telemetry may record `os = NULL` when `device_type = 'android'`. Analyst
+> - **1 conflict:** telemetry may record `os = NULL` when `device_type = 'android'`. Analytics Agent
 >   queries must coalesce `os` with `device_type` or Android will silently under-count.
 > - **0 undocumented gaps**
 >

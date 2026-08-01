@@ -154,7 +154,7 @@ flowchart TD
     VAL -->|"fail, retry 1"| PLAN
     VAL -->|ok| EX
 
-    EX["<b>7 · Execute</b> — Analyst<br/>aggregation pushed down, no raw rows"]
+    EX["<b>7 · Execute</b> — Analytics Agent<br/>aggregation pushed down, no raw rows"]
     EX --> AUD
 
     AUD["<b>8 · Result audit</b> — empty? null-heavy dim?"]
@@ -429,7 +429,7 @@ flowchart TD
 | :--- | :--- |
 | `input` | what the step received |
 | `output` | what it produced |
-| `metadata.agent` | `context_librarian` / `query_architect` / `product_analyst` |
+| `metadata.agent` | `context_agent` / `query_architect` / `analytics_agent` |
 | `metadata.why` | one sentence explaining the decision |
 
 `metadata.why` is what turns a timing log into the reasoning chain judges are told to follow.
