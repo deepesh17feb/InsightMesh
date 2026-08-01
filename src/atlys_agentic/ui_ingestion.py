@@ -27,39 +27,75 @@ def render_app():
         """
         <style>
         .hero-title {
-            font-size: 2.1rem;
+            font-size: 1.5rem;
             font-weight: 700;
             background: linear-gradient(135deg, #60A5FA 0%, #A78BFA 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 0.2rem;
+            margin-bottom: 0.15rem;
         }
         .hero-subtitle {
             color: #94A3B8;
-            font-size: 0.95rem;
-            margin-bottom: 1.2rem;
+            font-size: 0.84rem;
+            margin-bottom: 0.85rem;
         }
         .status-pill {
             display: inline-block;
-            background: rgba(30, 41, 59, 0.7);
+            background: rgba(30, 41, 59, 0.6);
             border: 1px solid #334155;
             color: #93C5FD;
-            padding: 0.25rem 0.75rem;
+            padding: 0.2rem 0.6rem;
             border-radius: 9999px;
-            font-size: 0.78rem;
+            font-size: 0.74rem;
             font-weight: 500;
-            margin-right: 0.5rem;
+            margin-right: 0.4rem;
         }
         .tag-pill {
             display: inline-block;
-            background: rgba(16, 185, 129, 0.15);
+            background: rgba(16, 185, 129, 0.12);
             border: 1px solid #10B981;
             color: #34D399;
-            padding: 0.2rem 0.5rem;
-            border-radius: 6px;
-            font-size: 0.78rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 5px;
+            font-size: 0.74rem;
             font-family: monospace;
-            margin: 0.2rem;
+            margin: 0.15rem;
+        }
+
+        /* Subtle & Compact Metric Cards */
+        div[data-testid="stMetric"] {
+            background: rgba(30, 41, 59, 0.45) !important;
+            border: 1px solid rgba(51, 65, 85, 0.7) !important;
+            border-radius: 8px !important;
+            padding: 0.45rem 0.75rem !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15) !important;
+        }
+
+        div[data-testid="stMetricLabel"], 
+        div[data-testid="stMetricLabel"] * {
+            font-size: 0.7rem !important;
+            font-weight: 500 !important;
+            color: #94A3B8 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.04em !important;
+            margin-bottom: 0.1rem !important;
+        }
+
+        div[data-testid="stMetricValue"], 
+        div[data-testid="stMetricValue"] * {
+            font-size: 0.95rem !important;
+            font-weight: 600 !important;
+            color: #93C5FD !important;
+            font-family: 'JetBrains Mono', monospace, -apple-system !important;
+        }
+
+        /* Subtle Section Headers */
+        h2, h3, div[data-testid="stHeadingWithActionElements"] h2, div[data-testid="stHeadingWithActionElements"] h3 {
+            font-size: 1.05rem !important;
+            font-weight: 600 !important;
+            color: #E2E8F0 !important;
+            margin-top: 0.5rem !important;
+            margin-bottom: 0.5rem !important;
         }
         </style>
         """,
