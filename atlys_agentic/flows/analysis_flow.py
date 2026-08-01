@@ -75,9 +75,18 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
     @listen(jit_context_retrieval)
     def run_multi_cut_analysis(self):
         for dim in _MANDATORY_CUT_DIMENSIONS:
-            sql = f"{self.state.base_sql} /* cut: {dim} */"
-            result = tools.Tool_Analytics_Compute(sql)
-            self.state.cuts[dim] = result.get("rows", [])
+            sql_clean = self.state.base_sql.strip().rstrip(";")
+            if "group by" in sql_clean.lower():
+                sql = f"{sql_clean} /* cut: {dim} */"
+            else:
+                sql = f"SELECT {dim}, count() AS events, uniq(user_id) AS users FROM ({sql_clean}) GROUP BY {dim} ORDER BY events DESC LIMIT 5"
+            try:
+                result = tools.Tool_Analytics_Compute(sql)
+                self.state.cuts[dim] = result.get("rows", [])
+            except Exception:
+                fallback_sql = f"{sql_clean} /* cut: {dim} */"
+                result = tools.Tool_Analytics_Compute(fallback_sql)
+                self.state.cuts[dim] = result.get("rows", [])
             tracing.span(self.state.trace_id, f"cut_{dim}", {"select_sql": sql}, result)
 
     @router(run_multi_cut_analysis)
