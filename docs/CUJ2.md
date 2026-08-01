@@ -68,24 +68,52 @@ Evaluation criteria:
    Iterative drill-down is explicitly out of MVP scope — see § 11.
 9. **`memory=False` holds.** Cross-question continuity comes from reading the `insights`
    table, which is an explicit tool call, not opaque model recall.
+10. **Query Architect ownership is enforced structurally, not by convention.** The executor
+    accepts a typed `PlannedQuery`, never a bare SQL string, so there is no path by which
+    ad-hoc SQL reaches ClickHouse. See § 4 *Query provenance*.
+11. **Never fabricate data.** When every query path fails, the cut is empty and the result
+    audit says so. The current implementation substitutes `[{"dim": dim, "events": 100}]`
+    (`analysis_flow.py:367`) and continues analysing an invented number all the way into the
+    PM report — this must be deleted, not preserved.
 
 ---
 
 ## 3. Agent roster
 
+### Naming
+
+Agent names follow the problem statement: **Instrumentation Agent**, **Analytics Agent**,
+**Context Agent**. The Query Architect is a fourth agent the problem statement does not name —
+it exists because SQL translation is a distinct responsibility from schema design (CUJ 1) and
+from result interpretation (CUJ 2).
+
+| Agent | Appears in | Code identifier (rename pending) |
+| :--- | :--- | :--- |
+| **Instrumentation Agent** | CUJ 1 | `instrumentation_engineer` |
+| **Analytics Agent** | CUJ 2 | `product_analyst` |
+| **Context Agent** | CUJ 1 + CUJ 2 | `context_librarian` |
+| **Query Architect** | CUJ 1 + CUJ 2 | `query_architect` |
+
+The code identifiers still carry the earlier persona names (`context_librarian`,
+`product_analyst`, `instrumentation_engineer`) in `agents.py`, `config/agents.yaml` and the
+tests. Renaming them to match is a pending follow-up — until it lands, these docs are the
+authority on naming and the identifiers above are the mapping.
+
+### Roles
+
 | Agent | Owns | Never | Reads / writes |
 | :--- | :--- | :--- | :--- |
-| **Context Librarian** | Catalog, table semantics, live profile probe, known-issue match, insight persistence. Sole writer. | Translates intent into SQL. Interprets results for the PM. | reads chDB + `system.tables` + aggregates; writes chDB |
+| **Context Agent** | Catalog, table semantics, live profile probe, known-issue match, insight persistence. Sole writer. | Translates intent into SQL. Interprets results for the PM. | reads chDB + `system.tables` + aggregates; writes chDB |
 | **Query Architect** | Translating the interpretation into SELECT statements — 5 cuts, intersection, alt-denominator headline, baseline metric. **Shared with CUJ 1**, where the same persona emits DDL, MV and `INSERT` — see `docs/CUJ1.md` § 3. | Touches any database. Decides what a metric means. | nothing |
-| **Product Analyst** | Executing the plan, auditing results, deriving signals, scoring confidence, PM synthesis. | Translates intent into SQL. Writes to any database. | reads ClickHouse rows via aggregates only |
+| **Analytics Agent** | Executing the plan, auditing results, deriving signals, scoring confidence, PM synthesis. | Translates intent into SQL. Writes to any database. | reads ClickHouse rows via aggregates only |
 
-**Plane rule:** metadata versus analytical data, not chDB versus ClickHouse. The Librarian
-reads structure and aggregates; only the Analyst executes the analytical cut queries. No agent
+**Plane rule:** metadata versus analytical data, not chDB versus ClickHouse. The Context Agent
+reads structure and aggregates; only the Analytics Agent executes the analytical cut queries. No agent
 pulls raw rows into LLM context.
 
 **What "never writes SQL" means.** The boundary is *translation*, not the presence of SQL
 strings. Turning intent — a question, a metric formula, a design — into SQL belongs to the
-Query Architect exclusively. A Librarian tool holding a fixed query is not translation: the
+Query Architect exclusively. A Context Agent tool holding a fixed query is not translation: the
 shape is authored in version-controlled tool code, is testable, and does not vary with the
 request. Phases 1a, 1b and 1c are templated queries of this kind. The one genuinely
 generative piece in the context-load path — the **baseline metric**, which requires rendering
@@ -223,6 +251,36 @@ The **baseline metric** is rendered by the Query Architect in phase 5 (it requir
 
 This single call replaces a separate metric-resolution step — consolidation, not addition.
 
+**5 · Query provenance.** The Query Architect owning all SQL translation is enforced by the
+type system, not by discipline. The executor takes a plan item; a bare string is a `TypeError`,
+so no ad-hoc path exists to bypass it.
+
+```python
+class PlannedQuery(BaseModel):
+    purpose: str      # "cut:device_type" | "baseline" | "intersection" | "timeseries" | "headline_alt"
+    sql: str
+    origin: Literal["architect_llm", "architect_fallback"]
+
+
+def Tool_Analytics_Compute(query: PlannedQuery) -> dict:
+    _assert_select_only(query.sql)
+    ...
+```
+
+`origin` exists because SQL generation is **LLM-driven with a deterministic fallback**, and the
+fallback is currently silent. `query_architect.generate_sql` returns a template on three paths:
+no API key or running under pytest, LLM output missing a mandatory dimension, or any exception
+(rate limit, timeout, malformed JSON). That template emits raw event counts per dimension — not
+the metric — so a degraded run does not answer a weaker version of the question, it answers a
+*different* question, with nothing in the output to say so.
+
+Recording `origin` on the span makes the claim checkable: a judge opening the trace sees whether
+the LLM authored that SQL. Under *"no trace, no credit"* the distinction matters. When
+`origin == "architect_fallback"`, the report says so and confidence is capped.
+
+Note also that the `PYTEST_CURRENT_TEST` guard means every test exercises the template path —
+the LLM path has no CI coverage by construction.
+
 **9 · Derived signals — all arithmetic on rows already fetched, no extra queries.**
 
 | Signal | Rule |
@@ -242,8 +300,13 @@ table.
 | | Count |
 | :--- | :--- |
 | LLM calls | 5 — guardrail, resolve, answerability, plan, synthesize (+1 on replan) |
-| ClickHouse queries | 8 — 1 probe, 5 cuts, 1 intersection, 1 alt-denominator headline |
+| ClickHouse queries | 9 — 1 probe, 5 cuts, 1 intersection, 1 alt-denominator headline, 1 time series |
 | Raw rows into LLM context | **0** |
+
+The **time series** is not optional: phase 9 claims a trend and a date coincidence — *"first
+date the trend breaks versus the date on the matched K-issue"* — and neither is derivable from
+the cuts, which are aggregated across the whole window. It is generated by the Query Architect
+in phase 5 like every other query, with `purpose="timeseries"`.
 
 ---
 
@@ -253,9 +316,9 @@ table.
 flowchart TD
     Q(["LibreChat question"]) --> CL
 
-    CL["<b>Context Librarian</b><br/>catalog · semantics · probe · K-match · persist<br/><i>metadata and aggregates</i>"]
+    CL["<b>Context Agent</b><br/>catalog · semantics · probe · K-match · persist<br/><i>metadata and aggregates</i>"]
     QA["<b>Query Architect</b><br/>interpretation to SELECT statements<br/><i>no data access</i>"]
-    PA["<b>Product Analyst</b><br/>execute · audit · derive · score · synthesize<br/><i>read-only</i>"]
+    PA["<b>Analytics Agent</b><br/>execute · audit · derive · score · synthesize<br/><i>read-only</i>"]
 
     CL -->|"1 · context package + interpretation"| QA
     QA -->|"2 · query plan"| PA
@@ -333,21 +396,21 @@ propagation — no manually-passed trace id, which is what produces orphan spans
 flowchart TD
     ROOT["<b>analysis::{spec_id}</b> — ROOT<br/><i>trace URL captured here</i>"]
 
-    ROOT --> S1["librarian::load_catalog<br/>out: raw tables, aggregates, source"]
-    ROOT --> S2["librarian::resolve_table — GENERATION<br/>out: table + <b>why this table</b>"]
-    ROOT --> S3["librarian::load_table_semantics<br/>out: metrics, caveats, K-issues, context_version, prior_finding"]
-    ROOT --> S4["librarian::live_probe<br/>out: rows, date_range, users, null_shares"]
-    ROOT --> S5["librarian::answerability — GENERATION<br/>out: yes|partial|no · interpretation · missing · <b>why</b>"]
-    ROOT --> S6["librarian::known_issue_match<br/>out: matched K-id or none"]
-    ROOT --> S7["architect::plan_queries — GENERATION<br/>out: 8 SELECTs + <b>why each cut</b>"]
+    ROOT --> S1["context_agent::load_catalog<br/>out: raw tables, aggregates, source"]
+    ROOT --> S2["context_agent::resolve_table — GENERATION<br/>out: table + <b>why this table</b>"]
+    ROOT --> S3["context_agent::load_table_semantics<br/>out: metrics, caveats, K-issues, context_version, prior_finding"]
+    ROOT --> S4["context_agent::live_probe<br/>out: rows, date_range, users, null_shares"]
+    ROOT --> S5["context_agent::answerability — GENERATION<br/>out: yes|partial|no · interpretation · missing · <b>why</b>"]
+    ROOT --> S6["context_agent::known_issue_match<br/>out: matched K-id or none"]
+    ROOT --> S7["query_architect::plan_queries — GENERATION<br/>out: 8 SELECTs + <b>why each cut</b>"]
     ROOT --> S8["validator::check_queries<br/>out: violations[]"]
-    S8 -.->|if violations| S8R["architect::replan_retry — GENERATION"]
-    ROOT --> S9["analyst::execute_cuts<br/>out: rows per cut"]
-    ROOT --> S10["analyst::result_audit<br/>out: warnings[]"]
-    ROOT --> S11["analyst::derive_signals<br/>out: delta, concentration, date_coincidence, trend_state"]
-    ROOT --> S12["analyst::score_confidence<br/>out: score + rationale"]
-    ROOT --> S13["analyst::synthesize — GENERATION<br/>out: PM insight + <b>why</b>"]
-    ROOT --> S14["librarian::persist_insight<br/>out: finding_key, version"]
+    S8 -.->|if violations| S8R["query_architect::replan_retry — GENERATION"]
+    ROOT --> S9["analytics_agent::execute_cuts<br/>out: rows per cut"]
+    ROOT --> S10["analytics_agent::result_audit<br/>out: warnings[]"]
+    ROOT --> S11["analytics_agent::derive_signals<br/>out: delta, concentration, date_coincidence, trend_state"]
+    ROOT --> S12["analytics_agent::score_confidence<br/>out: score + rationale"]
+    ROOT --> S13["analytics_agent::synthesize — GENERATION<br/>out: PM insight + <b>why</b>"]
+    ROOT --> S14["context_agent::persist_insight<br/>out: finding_key, version"]
     ROOT --> S15["report::emit_artifacts<br/>out: paths, trace URL"]
 
     classDef root fill:#c2410c,stroke:#7c2408,stroke-width:3px,color:#ffffff

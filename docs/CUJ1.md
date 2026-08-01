@@ -16,7 +16,7 @@ Maps to the problem statement's **Instrumentation Agent** deliverable:
 
 | Requirement | Where satisfied |
 | :--- | :--- |
-| Design an optimal ClickHouse table schema (column types, ordering keys, partitioning, TTL) | Phase 5 — Instrumentation Engineer |
+| Design an optimal ClickHouse table schema (column types, ordering keys, partitioning, TTL) | Phase 5 — Instrumentation Agent |
 | Generate and execute the `CREATE TABLE` statements | Phase 6 → Phase 11a |
 | Map raw events to the schema | Phase 5 field mapping → Phase 11b load |
 | Define any materialized views or aggregations needed | Phase 5 MV justification → Phase 11a |
@@ -31,18 +31,18 @@ Maps to the problem statement's **Instrumentation Agent** deliverable:
 
 These were settled during design review. Recorded here so they are not relitigated.
 
-1. **LLM brain decides the schema, not a rule cascade.** The Instrumentation Engineer
+1. **LLM brain decides the schema, not a rule cascade.** The Instrumentation Agent
    reasons over spec text + event sample + context package. The previous deterministic
    type-inference cascade is retired as a *generator*.
 2. **Invariants become a validator, not a generator.** Four assertions run against the
    produced DDL. A system prompt biases the model toward correct design; the validator
    guarantees the non-negotiables. Prompt for quality, assertion for safety.
-3. **Context Librarian owns all data.** It is the only agent that touches chDB or
+3. **Context Agent owns all data.** It is the only agent that touches chDB or
    ClickHouse Cloud. The Engineer and the Query Architect have zero data access.
 4. **chDB refreshes from live before every run.** `system.tables` / `system.columns` is
    ground truth for structure; `schema_registry` is a mirror, not an authority. Drift
    between them is surfaced as a governance finding, not silently overwritten.
-5. **Field mapping is a design decision, owned by the Engineer.** Which event key lands in
+5. **Field mapping is a design decision, owned by the Instrumentation Agent.** Which event key lands in
    which column, and how nested keys flatten (`payment.amount` → `payment_amount`), is
    design intent. The Query Architect renders it into DDL and the `INSERT`; it does not
    decide it.
@@ -58,16 +58,36 @@ These were settled during design review. Recorded here so they are not relitigat
 
 ## 3. Agent roster
 
+### Naming
+
+Agent names follow the problem statement: **Instrumentation Agent**, **Analytics Agent**,
+**Context Agent**. The Query Architect is a fourth agent the problem statement does not name —
+it exists because SQL translation is a distinct responsibility from schema design (CUJ 1) and
+from result interpretation (CUJ 2).
+
+| Agent | Appears in | Code identifier (rename pending) |
+| :--- | :--- | :--- |
+| **Instrumentation Agent** | CUJ 1 | `instrumentation_engineer` |
+| **Analytics Agent** | CUJ 2 | `product_analyst` |
+| **Context Agent** | CUJ 1 + CUJ 2 | `context_librarian` |
+| **Query Architect** | CUJ 1 + CUJ 2 | `query_architect` |
+
+The code identifiers still carry the earlier persona names in `agents.py`,
+`config/agents.yaml` and the tests. Renaming them to match is a pending follow-up — until it
+lands, these docs are the authority on naming and the identifiers above are the mapping.
+
+### Roles
+
 | Agent | Owns | Never | Tools |
 | :--- | :--- | :--- | :--- |
-| **Context Librarian** | All data. chDB refresh, context package, strategy decision, semantic audit, DDL execution, event loading, registry + context sync. | Designs schemas. Translates intent into SQL. | `refresh_chdb_from_live`, `build_context_package`, `decide_strategy`, `context_diff`, `execute_ddl`, `load_events`, `register_schema_version`, `context_upsert`, `append_context_changelog` |
-| **Instrumentation Engineer** | Schema design — ordering key, partitioning, column types, TTL, MV justification, event→column field mapping. LLM-driven. | Touches any database. Emits SQL. | `design_schema` (LLM) |
+| **Context Agent** | All data. chDB refresh, context package, strategy decision, semantic audit, DDL execution, event loading, registry + context sync. | Designs schemas. Translates intent into SQL. | `refresh_chdb_from_live`, `build_context_package`, `decide_strategy`, `context_diff`, `execute_ddl`, `load_events`, `register_schema_version`, `context_upsert`, `append_context_changelog` |
+| **Instrumentation Agent** | Schema design — ordering key, partitioning, column types, TTL, MV justification, event→column field mapping. LLM-driven. | Touches any database. Emits SQL. | `design_schema` (LLM) |
 | **Query Architect** | Rendering design intent into ClickHouse DDL, MV DDL, and the `INSERT` statement. **Shared with CUJ 2**, where the same persona emits `SELECT` statements — see `docs/CUJ2.md` § 3. | Touches any database. Makes design decisions. | `design_to_ddl` (LLM) |
 | **Human operator** | The approval gate. | — | LibreChat `APPROVE` |
 
 **What "never writes SQL" means.** The boundary is *translation*, not the presence of SQL
 strings. Turning intent — a design, a question, a metric formula — into SQL belongs to the
-Query Architect exclusively. A Librarian tool holding a fixed query (`SELECT ... FROM
+Query Architect exclusively. A Context Agent tool holding a fixed query (`SELECT ... FROM
 system.tables`, `INSERT INTO context_changelog ...`) is not translation: the query shape is
 authored in version-controlled tool code, is testable, and does not vary with the request.
 
@@ -79,7 +99,7 @@ authored in version-controlled tool code, is testable, and does not vary with th
 flowchart TD
     PROMPT(["<b>LibreChat message</b><br/>ingest spec 01_express_checkout"]) --> IE1
 
-    IE1["<b>1 · Instrumentation Engineer receives request</b><br/>parses spec intent + event sample shape<br/><i>zero data access — must ask for context</i>"]
+    IE1["<b>1 · Instrumentation Agent receives request</b><br/>parses spec intent + event sample shape<br/><i>zero data access — must ask for context</i>"]
     IE1 -->|"request context"| CL1
 
     CL1["<b>2 · Refresh chDB from live</b><br/>read ClickHouse system.tables + system.columns<br/>surface drift vs schema_registry"]
@@ -120,7 +140,7 @@ flowchart TD
     EX["<b>11a · Execute DDL</b><br/>CREATE TABLE + CREATE MV on ClickHouse Cloud<br/>rollback on failure"]
     EX --> LOAD
 
-    LOAD["<b>11b · Load events</b><br/>INSERT events.ndjson FORMAT JSONEachRow<br/>using the Engineer's field mapping"]
+    LOAD["<b>11b · Load events</b><br/>INSERT events.ndjson FORMAT JSONEachRow<br/>using the Instrumentation Agent's field mapping"]
     LOAD --> SYNC
 
     SYNC["<b>11c · Sync context</b><br/>register_schema_version · context_upsert<br/>append_context_changelog"]
@@ -154,8 +174,8 @@ flowchart TD
 flowchart TD
     PROMPT(["<b>LibreChat message</b>"]) --> IE
 
-    IE["<b>Instrumentation Engineer</b><br/>LLM brain — decides schema design<br/><i>no data access</i>"]
-    CL["<b>Context Librarian</b><br/>owns ALL data<br/>refresh · context · strategy · audit · deploy · load"]
+    IE["<b>Instrumentation Agent</b><br/>LLM brain — decides schema design<br/><i>no data access</i>"]
+    CL["<b>Context Agent</b><br/>owns ALL data<br/>refresh · context · strategy · audit · deploy · load"]
     QA["<b>Query Architect</b><br/>design intent to DDL and INSERT<br/><i>no data access · shared with CUJ 2</i>"]
     OP(["<b>Human operator</b><br/>in LibreChat"])
 
@@ -193,7 +213,7 @@ flowchart TD
     class PROMPT io
 ```
 
-**Plane rule:** metadata versus analytical data, not chDB versus ClickHouse. The Librarian
+**Plane rule:** metadata versus analytical data, not chDB versus ClickHouse. The Context Agent
 reads `system.columns` (structure, no rows) and owns chDB (semantics). It writes rows to
 ClickHouse Cloud only during the gated load. The Engineer and Query Architect read
 neither.
@@ -269,19 +289,19 @@ propagation — no manually-passed trace id, which is what produces orphan spans
 flowchart TD
     ROOT["<b>ingestion::{spec_id}</b> — ROOT<br/><i>trace URL captured here</i>"]
 
-    ROOT --> S1["librarian::refresh_chdb_from_live<br/>out: tables_refreshed, drift_detected"]
-    ROOT --> S2["librarian::build_context_package<br/>out: existing_tables, metrics, caveats"]
-    ROOT --> S3["librarian::decide_strategy<br/>out: CREATE_NEW / ALTER_EXISTING + <b>why</b>"]
-    ROOT --> S4["engineer::design_schema — GENERATION<br/>in: context + spec + sample<br/>out: design intent + field mapping + <b>why</b>"]
-    ROOT --> S5["architect::design_to_ddl — GENERATION<br/>in: design intent · out: DDL, MV, INSERT"]
+    ROOT --> S1["context_agent::refresh_chdb_from_live<br/>out: tables_refreshed, drift_detected"]
+    ROOT --> S2["context_agent::build_context_package<br/>out: existing_tables, metrics, caveats"]
+    ROOT --> S3["context_agent::decide_strategy<br/>out: CREATE_NEW / ALTER_EXISTING + <b>why</b>"]
+    ROOT --> S4["instrumentation_agent::design_schema — GENERATION<br/>in: context + spec + sample<br/>out: design intent + field mapping + <b>why</b>"]
+    ROOT --> S5["query_architect::design_to_ddl — GENERATION<br/>in: design intent · out: DDL, MV, INSERT"]
     ROOT --> S6["validator::invariant_check<br/>out: violations[]"]
-    S6 -.->|if violations| S6R["engineer::redesign_retry — GENERATION<br/>in: violations as feedback"]
-    ROOT --> S7["librarian::context_diff<br/>out: additions, conflicts, gaps"]
+    S6 -.->|if violations| S6R["instrumentation_agent::redesign_retry — GENERATION<br/>in: violations as feedback"]
+    ROOT --> S7["context_agent::context_diff<br/>out: additions, conflicts, gaps"]
     ROOT --> S8["human::approval_gate<br/>in: proposal · out: APPROVE / abort"]
-    ROOT --> S9["librarian::execute_ddl<br/>out: status, rollback?"]
-    ROOT --> S10["librarian::load_events<br/>out: rows_loaded"]
-    ROOT --> S11["librarian::register_schema_version<br/>out: version"]
-    ROOT --> S12["librarian::sync_context<br/>out: upserts, changelog entries"]
+    ROOT --> S9["context_agent::execute_ddl<br/>out: status, rollback?"]
+    ROOT --> S10["context_agent::load_events<br/>out: rows_loaded"]
+    ROOT --> S11["context_agent::register_schema_version<br/>out: version"]
+    ROOT --> S12["context_agent::sync_context<br/>out: upserts, changelog entries"]
     ROOT --> S13["report::emit_artifacts<br/>out: paths, trace URL"]
 
     classDef root fill:#c2410c,stroke:#7c2408,stroke-width:3px,color:#ffffff
@@ -347,7 +367,7 @@ outputs/submission/{spec_id}/
 | :--- | :--- |
 | Header | spec id, table, timestamp, **trace URL**, run mode |
 | What was decided | `CREATE_NEW` / `ALTER_EXISTING` / `REUSE_EXISTING` and why |
-| Schema design rationale | per pillar — ordering key, partitioning, types, MV, TTL — each with the Engineer's actual reasoning, not restated boilerplate |
+| Schema design rationale | per pillar — ordering key, partitioning, types, MV, TTL — each with the Instrumentation Agent's actual reasoning, not restated boilerplate |
 | Field mapping | event key → column, including nested flattening |
 | Materialized view | the MV, or an explicit "no MV — did not earn its keep, because…" |
 | Context audit | additions / conflicts / gaps, with the contradiction text where one fired |
@@ -541,16 +561,16 @@ the submission package; chat is the surface a human actually reads.
 >
 > #### Reasoning chain
 >
-> 1. **librarian::refresh_chdb_from_live** — refreshed 8 live tables; no drift vs registry
-> 2. **librarian::decide_strategy** — `CREATE_NEW`; no matching table in live catalog or registry
-> 3. **engineer::design_schema** — led ordering with `timestamp` because funnel queries filter by window before cohort
-> 4. **architect::design_to_ddl** — rendered design intent into DDL, MV, and INSERT
+> 1. **context_agent::refresh_chdb_from_live** — refreshed 8 live tables; no drift vs registry
+> 2. **context_agent::decide_strategy** — `CREATE_NEW`; no matching table in live catalog or registry
+> 3. **instrumentation_agent::design_schema** — led ordering with `timestamp` because funnel queries filter by window before cohort
+> 4. **query_architect::design_to_ddl** — rendered design intent into DDL, MV, and INSERT
 > 5. **validator::invariant_check** — 0 violations
-> 6. **librarian::context_diff** — flagged the `os IS NULL` on Android caveat
+> 6. **context_agent::context_diff** — flagged the `os IS NULL` on Android caveat
 > 7. **human::approval_gate** — operator typed `APPROVE`
-> 8. **librarian::execute_ddl** — table + MV created
-> 9. **librarian::load_events** — 5,507 rows inserted
-> 10. **librarian::sync_context** — registry v1, 13 upserts, 13 changelog entries
+> 8. **context_agent::execute_ddl** — table + MV created
+> 9. **context_agent::load_events** — 5,507 rows inserted
+> 10. **context_agent::sync_context** — registry v1, 13 upserts, 13 changelog entries
 >
 > #### Artifacts
 >
