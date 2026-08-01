@@ -177,3 +177,24 @@ def test_analytics_compute_returns_json_rows():
         result = tools.Tool_Analytics_Compute("SELECT count() AS c FROM purchase_completed")
     mock_select.assert_called_once_with("SELECT count() AS c FROM purchase_completed")
     assert result == {"rows": [{"c": 42}]}
+
+def test_context_diff_flags_conversion_rate_denominator_conflict():
+    with patch("atlys_agentic.tools.chdb_client.run", return_value=[
+        {"key": "conversion_rate#0", "definition": "completed purchases / sessions"},
+        {"key": "funnel_conversion#0", "definition": "purchase_completed users / application_started"},
+    ]):
+        result = tools.Tool_Context_Diff("express_checkout", ["timestamp", "user_id", "device_type"])
+    assert any("denominator" in c.lower() for c in result["conflicts"])
+
+
+def test_context_diff_flags_undocumented_column_as_gap():
+    with patch("atlys_agentic.tools.chdb_client.run", return_value=[]):
+        result = tools.Tool_Context_Diff("document_uploaded", ["failed_attempt_threshold"])
+    assert any("failed_attempt_threshold" in g for g in result["gaps"])
+
+
+def test_context_diff_flags_new_columns_as_additions():
+    with patch("atlys_agentic.tools.chdb_client.run", return_value=[]):
+        result = tools.Tool_Context_Diff("express_checkout", ["shown_amount", "otp_attempts"])
+    assert "express_checkout.shown_amount" in result["additions"]
+    assert "express_checkout.otp_attempts" in result["additions"]

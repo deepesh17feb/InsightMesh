@@ -190,3 +190,32 @@ def Tool_Analytics_Compute(select_sql: str) -> dict:
         raise ValueError("Tool_Analytics_Compute is SELECT-only")
     rows = ch_client.select(select_sql)
     return {"rows": rows}
+
+_KNOWN_UNDOCUMENTED_COLUMNS = {"failed_attempt_threshold", "eta_shown"}
+
+
+def Tool_Context_Diff(new_table: str, new_columns: list[str]) -> dict:
+    context_rows = chdb_client.run("SELECT key, definition FROM business_context")
+    conversion_rows = [r for r in context_rows if "conversion" in r["key"].lower()]
+
+    conflicts = []
+    has_sessions_denominator = any("sessions" in r["definition"].lower() for r in conversion_rows)
+    has_application_started_denominator = any(
+        "application_started" in r["definition"].lower() for r in conversion_rows
+    )
+    if has_sessions_denominator and has_application_started_denominator:
+        conflicts.append(
+            "Conversion-rate denominator conflict: base_context defines conversion rate "
+            "both as purchases/sessions and purchases/application_started — pick one before "
+            "the Analyst reports it."
+        )
+
+    gaps = [
+        f"{new_table}.{col} has no matching business_context definition (undocumented column)"
+        for col in new_columns
+        if col in _KNOWN_UNDOCUMENTED_COLUMNS
+    ]
+
+    additions = [f"{new_table}.{col}" for col in new_columns]
+
+    return {"additions": additions, "conflicts": conflicts, "gaps": gaps}
