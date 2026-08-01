@@ -9,6 +9,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from atlys_agentic import ch_client, chdb_client
+
 _LOW_CARDINALITY_HINTS = {
     "device_type", "os", "currency", "channel", "saved_method_type",
     "geoip_country_code", "auth_method", "payment_method", "card_type",
@@ -155,3 +157,28 @@ def Tool_Generate_MV(table_name: str, ddl: str, funnel_step_column: str = "event
         f"FROM {table_name}\n"
         f"GROUP BY day, {segment_col}{', ' + funnel_step_column if step_expr else ''};"
     )
+
+def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str) -> dict:
+    """Execute DDL on ClickHouse Cloud, mirror to chDB schema_registry with a
+    monotonically increasing version per table. On failure, drop whatever
+    partial object exists and report the error instead of leaving Cloud in a
+    half-created state."""
+    try:
+        ch_client.command(ddl)
+    except Exception as exc:  # noqa: BLE001 - deliberately broad: any Cloud DDL failure must roll back
+        ch_client.select(f"DROP TABLE IF EXISTS {table_name}")
+        return {"status": "rolled_back", "table": table_name, "version": None, "error": str(exc)}
+
+    chdb_client.init_schema()
+    existing = chdb_client.run(
+        f"SELECT max(version) AS v FROM schema_registry WHERE table = '{table_name}'"
+    )
+    version = (existing[0]["v"] or 0) + 1 if existing and existing[0]["v"] is not None else 1
+    columns_json = json.dumps(_columns_from_ddl(ddl)).replace("'", "''")
+    ddl_escaped = ddl.replace("'", "''")
+    chdb_client.run(
+        f"""INSERT INTO schema_registry VALUES
+        ('{table_name}', '{ddl_escaped}', '{columns_json}', '{spec_id}', {version}, now())""",
+        fmt="CSV",
+    )
+    return {"status": "ok", "table": table_name, "version": version, "error": None}

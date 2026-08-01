@@ -141,3 +141,26 @@ def test_generate_mv_skips_when_no_segment_column_present():
     )
     mv = tools.Tool_Generate_MV("tiny", ddl)
     assert mv == ""
+
+from unittest.mock import patch
+
+
+def test_execute_ddl_success_writes_versioned_schema_registry_row():
+    ddl = "CREATE TABLE IF NOT EXISTS t1 (timestamp DateTime, user_id String) ENGINE=MergeTree ORDER BY (timestamp, user_id)"
+    with patch("atlys_agentic.tools.ch_client.command") as mock_command, \
+         patch("atlys_agentic.tools.chdb_client.init_schema"), \
+         patch("atlys_agentic.tools.chdb_client.run") as mock_chdb_run:
+        mock_chdb_run.side_effect = [[], None]  # SELECT max(version) -> [], then INSERT -> None
+        result = tools.Tool_Execute_DDL(ddl, "t1", spec_id="01_express_checkout")
+    mock_command.assert_called_once_with(ddl)
+    assert result == {"status": "ok", "table": "t1", "version": 1, "error": None}
+
+
+def test_execute_ddl_failure_rolls_back_and_reports_error():
+    ddl = "CREATE TABLE IF NOT EXISTS t2 (bad syntax"
+    with patch("atlys_agentic.tools.ch_client.command", side_effect=Exception("syntax error")) as mock_command, \
+         patch("atlys_agentic.tools.ch_client.select") as mock_select:
+        result = tools.Tool_Execute_DDL(ddl, "t2", spec_id="01_express_checkout")
+    assert result["status"] == "rolled_back"
+    assert "syntax error" in result["error"]
+    mock_select.assert_called_once_with("DROP TABLE IF EXISTS t2")
