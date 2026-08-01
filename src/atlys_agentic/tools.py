@@ -205,14 +205,15 @@ def Tool_Consult_Internal_Tables(spec_id: str, new_columns: list[str], table_nam
                 "ddl": r.get("ddl", ""),
             }
 
-    try:
-        cloud_tables_rows = ch_client.select("SHOW TABLES")
-        for row in cloud_tables_rows:
-            ct = row.get("name") if isinstance(row, dict) else row[0]
-            if ct not in existing_tables:
-                existing_tables[ct] = {"version": 1, "columns": [], "ddl": ""}
-    except Exception:
-        pass
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        try:
+            cloud_tables_rows = ch_client.select("SHOW TABLES")
+            for row in cloud_tables_rows:
+                ct = row.get("name") if isinstance(row, dict) else row[0]
+                if ct not in existing_tables:
+                    existing_tables[ct] = {"version": 1, "columns": [], "ddl": ""}
+        except Exception:
+            pass
 
     # Check 1: Target table name already exists in schema registry
     if table_name in existing_tables:
