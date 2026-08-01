@@ -22,16 +22,10 @@ The system is designed with strict architectural constraints:
 python3 -m venv .venv
 source .venv/bin/activate
 
-### Install Dependencies
-```bash
-# Create and activate a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
 # Install package in editable mode
 pip install -e .
-# Or install dependencies directly
-pip install -r src/atlys_agentic/requirements.txt
+# Or install dependencies directly from root requirements.txt
+pip install -r requirements.txt
 ```
 
 ### Configure Credentials
@@ -159,7 +153,7 @@ print("Multi-cut dimensions:", list(result["cuts"].keys()))
 #### 4. Connect to LibreChat (UI)
 Start the pre-configured LibreChat container:
 ```bash
-docker compose -f atlys_agentic/librechat/docker-compose.librechat.yml up -d
+docker compose -f src/atlys_agentic/librechat/docker-compose.librechat.yml up -d
 ```
 Open `http://localhost:3080` in your browser and select the **Atlys Analyst** model endpoint.
 
