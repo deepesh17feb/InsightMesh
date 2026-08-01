@@ -22,17 +22,25 @@ The system is designed with strict architectural constraints:
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install requirements
-pip install -r atlys_agentic/requirements.txt
+### Install Dependencies
+```bash
+# Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install package in editable mode
+pip install -e .
+# Or install dependencies directly
+pip install -r src/atlys_agentic/requirements.txt
 ```
 
 ### Configure Credentials
 Copy the example environment file and fill in your ClickHouse, Gemini, and Langfuse credentials:
 ```bash
-cp atlys_agentic/config/.env.example atlys_agentic/config/.env
+cp src/atlys_agentic/config/.env.example src/atlys_agentic/config/.env
 ```
 
-Key environment variables in `atlys_agentic/config/.env`:
+Key environment variables in `src/atlys_agentic/config/.env`:
 - `CLICKHOUSE_HOST`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`, `CLICKHOUSE_PORT`, `CLICKHOUSE_SECURE`
 - `CLICKHOUSE_DATABASE` (e.g. `clickathon`)
 - `LLM_MODEL` (e.g. `gemini/gemini-2.5-flash` or `gemini/gemini-flash-latest`)
@@ -50,7 +58,7 @@ The repository includes a comprehensive test suite covering paths, deterministic
 
 ### Run All Tests
 ```bash
-pytest atlys_agentic/tests/ -v
+pytest -v
 ```
 
 ### Run Tests by Component

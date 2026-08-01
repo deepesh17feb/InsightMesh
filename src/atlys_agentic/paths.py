@@ -1,6 +1,7 @@
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+ATLYS_AGENTIC_DIR = Path(__file__).resolve().parent
+REPO_ROOT = ATLYS_AGENTIC_DIR.parent.parent if ATLYS_AGENTIC_DIR.parent.name == "src" else ATLYS_AGENTIC_DIR.parent
 PROBLEM_STATEMENT_DIR = REPO_ROOT / "problem statment"
 DATA_DIR = PROBLEM_STATEMENT_DIR / "data"
 SPECS_DIR = PROBLEM_STATEMENT_DIR / "specs"
