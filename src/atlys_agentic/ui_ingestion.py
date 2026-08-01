@@ -213,14 +213,14 @@ def _render_cuj1_ingestion(available_specs: list[str]):
 
         btn_col1, btn_col2 = st.columns(2)
         with btn_col1:
-            if st.button("🧹 Clear Schemas", use_container_width=True, help="Clear schema_registry so all incoming tables are evaluated as CREATE_NEW"):
+            if st.button("🧹 Clear Schemas", width="stretch", help="Clear schema_registry so all incoming tables are evaluated as CREATE_NEW"):
                 chdb_client.run("TRUNCATE TABLE schema_registry", fmt="CSV")
                 st.session_state.pop("proposal", None)
                 st.toast("✅ Schema registry cleared! All tables will now be treated as CREATE_NEW.")
                 st.rerun()
 
         with btn_col2:
-            if st.button("🔄 Reset chDB", use_container_width=True, help="Full reset: clears schema registry, context changelog, and re-initializes base context"):
+            if st.button("🔄 Reset chDB", width="stretch", help="Full reset: clears schema registry, context changelog, and re-initializes base context"):
                 chdb_client.reset_chdb()
                 chdb_client.init_base_context()
                 st.session_state.pop("proposal", None)
@@ -279,7 +279,7 @@ def _render_cuj1_ingestion(available_specs: list[str]):
         st.subheader("2. Agent Schema Inference & Context Audit")
 
         action_label = "🔍 Run Dry Run (Generate Proposal)" if is_dry_run else "⚡ Generate Schema for Deployment"
-        run_btn = st.button(action_label, type="primary", use_container_width=True)
+        run_btn = st.button(action_label, type="primary", width="stretch")
 
         if "proposal" not in st.session_state or run_btn:
             if run_btn:
@@ -354,7 +354,7 @@ def _render_cuj1_ingestion(available_specs: list[str]):
                 st.subheader("3. Human-in-the-Loop (HITL) Gate")
                 confirm = st.checkbox(f"I authorize executing this DDL on ClickHouse Cloud table `{table_name}`.")
 
-                if st.button("🚀 Approve & Deploy to ClickHouse Cloud", type="secondary", disabled=not confirm, use_container_width=True):
+                if st.button("🚀 Approve & Deploy to ClickHouse Cloud", type="secondary", disabled=not confirm, width="stretch"):
                     with st.spinner("Executing DDL on ClickHouse Cloud and recording version..."):
                         result = ingestion_flow.run(
                             spec_id=selected_spec,
@@ -446,7 +446,7 @@ def _render_cuj2_investigation(available_specs: list[str]):
         run_investigation = st.button(
             "🔍 Run Live Root-Cause Investigation",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=not has_question,
         )
 
@@ -510,7 +510,7 @@ def _render_cuj2_investigation(available_specs: list[str]):
                     deltas_data = views.get("metric_deltas", [])
                     if deltas_data:
                         df_deltas = pd.DataFrame(deltas_data)
-                        st.dataframe(df_deltas, use_container_width=True, hide_index=True)
+                        st.dataframe(df_deltas, width="stretch", hide_index=True)
                     else:
                         st.write("No delta metrics returned.")
 
@@ -571,7 +571,7 @@ def _render_chdb_explorer():
             selected_table = st.selectbox("Select chDB Table to Inspect", table_names, index=0)
         with col_act:
             st.write("")
-            refresh_btn = st.button("🔄 Refresh Data", use_container_width=True)
+            refresh_btn = st.button("🔄 Refresh Data", width="stretch")
 
         if selected_table:
             try:
@@ -579,7 +579,7 @@ def _render_chdb_explorer():
                 if rows:
                     df = pd.DataFrame(rows)
                     st.markdown(f"**Viewing `{selected_table}` ({len(df)} rows displayed):**")
-                    st.dataframe(df, use_container_width=True)
+                    st.dataframe(df, width="stretch")
 
                     # Detail view for selected table entries
                     if selected_table in ("business_context", "insights"):
@@ -623,7 +623,7 @@ def _render_chdb_explorer():
                 if query_res:
                     df_res = pd.DataFrame(query_res)
                     st.success(f"Query returned **{len(df_res)} rows** successfully.")
-                    st.dataframe(df_res, use_container_width=True)
+                    st.dataframe(df_res, width="stretch")
                 else:
                     st.info("Query executed successfully. 0 rows returned.")
             except Exception as ex:
