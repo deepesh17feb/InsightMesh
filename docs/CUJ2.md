@@ -32,20 +32,21 @@ Evaluation criteria:
 | Criterion | Where satisfied |
 | :--- | :--- |
 | **Insight quality** — carries the *why* | baseline delta → concentration → K-link → trend → recommendation |
-| **Context freshness** — reasons with updated context, not a stale snapshot | Phase 1a live catalog + Phase 1b `context_changelog` citation |
+| **Context freshness** — reasons with updated context, not a stale snapshot | Phase 1a semantic layer written by CUJ 1 + Phase 1b `context_changelog` citation |
 | **Traceability** — follow the reasoning chain | § 7 span tree, `why` on every span |
-| **The unseen spec** | Phase 2 catalog-driven resolution — no keyword ladder |
+| **The unseen spec** | Phase 1a semantic retrieval over CUJ 1-written descriptions — no keyword ladder |
 | Viz layer — insights with confidence scores, context diff | `insights` table + `context_changelog` + `Tool_Emit_Viz` |
 
 ---
 
 ## 2. Locked decisions
 
-1. **Table resolution is catalog-driven, never keyword-driven.** The existing
+1. **Table resolution is semantic, never keyword-driven.** The existing
    `infer_domain_from_question()` keyword ladder is retired. It hardcodes the five known
    specs and silently defaults to `01_express_checkout`, which means the unseen spec would
    be analysed against the wrong table with full confidence. This is the single highest-risk
-   defect in CUJ 2 and the fix is not optional.
+   defect in CUJ 2 and the fix is not optional. Replacement is vector retrieval over
+   `table_semantics`, whose descriptions CUJ 1 derives from `spec.md` at deploy time.
 2. **Answerability is checked before any analytical query runs.** The base context contains
    a metric-boundary trap — post-purchase metrics are not derivable from pre-purchase funnel
    telemetry. Answering that with a fabricated number is the worst available failure. Three
@@ -126,19 +127,19 @@ flowchart TD
     Q(["LibreChat question"]) --> G["Guardrail — greeting / abusive / out-of-scope"]
     G -->|analytical| C1
 
-    C1["<b>1a · Catalog</b> — Context Agent<br/>schema_registry + live system.tables"]
-    C1 --> RES
+    C1["<b>1a · Semantic retrieval</b> — Context Agent<br/>embed question · cosineDistance over table_semantics<br/>top-3 candidates + live system.tables classification"]
+    C1 --> GD{"best distance<br/>within threshold?"}
 
-    RES["<b>2 · Resolve table</b> — LLM picks from catalog<br/><i>no keyword ladder — unseen-spec fix</i>"]
-    RES --> C2
+    GD -->|"no confident match"| DECLINE
+    GD -->|yes| C2
 
-    C2["<b>1b · Table semantics</b> — Context Agent, chDB<br/>columns + version · metric formulas + denominators<br/>caveats · K1–K7 · changelog · prior insights by finding_key"]
+    C2["<b>1b · Table semantics</b> — Context Agent, chDB<br/>columns + version · metric formulas + denominators<br/>caveats · K1–K7 · changelog · prior insights by finding_key<br/><i>loaded for all 3 candidates</i>"]
     C2 --> C3
 
-    C3["<b>1c · Live probe</b> — aggregates only<br/>row count · date range · uniq users<br/>dim cardinality + null share · <b>baseline metric</b>"]
+    C3["<b>1c · Live probe</b> — aggregates only<br/>row count · date range · uniq users<br/>dim cardinality + null share"]
     C3 --> ANS
 
-    ANS["<b>3 · Answerability + interpretation</b> — LLM, grounded<br/>metric · denominator · conflict · what's missing"]
+    ANS["<b>2+3 · Resolve + answerability</b> — LLM, one call<br/>picks among the 3 candidates <b>and</b> decides answerability<br/>metric · denominator · conflict · what's missing"]
     ANS --> GA{"answerable?"}
 
     GA -->|"<b>no</b>"| DECLINE(["<b>Decline honestly</b><br/>what's missing and why<br/>no query, no fabricated number"])
@@ -185,9 +186,9 @@ flowchart TD
     classDef store fill:#f7f9fa,stroke:#7a8894,stroke-width:1px,color:#3d4a55
     classDef io fill:#eef2f5,stroke:#7a8894,stroke-width:1px,color:#3d4a55
 
-    class C1,C2,C3,RES,KI,AUD,DERIVE lib
+    class C1,C2,C3,KI,AUD,DERIVE lib
     class PLAN,EX,SYN arch
-    class VAL,GA gate
+    class VAL,GA,GD gate
     class DECLINE stop
     class CHDB,LIVE store
     class Q,G,OUT io
@@ -195,8 +196,25 @@ flowchart TD
 
 ### Phase notes
 
-**1a · Catalog.** Reads `schema_registry` and live `system.tables`. Every object is classified
-deterministically:
+**1a · Semantic retrieval.** Table names and column lists are thin signal — `visa_fast_track`
+with columns `[timestamp, user_id, device_type]` says nothing about what the feature does.
+CUJ 1 therefore writes a description derived from `spec.md` into `table_semantics` at deploy
+time (see `docs/CUJ1.md` § 6a). Retrieval embeds the question and ranks against it:
+
+```sql
+SELECT table_name, spec_id, description,
+       cosineDistance(embedding, {question_embedding}) AS dist
+FROM table_semantics
+WHERE length(embedding) > 0
+ORDER BY dist ASC
+LIMIT 3
+```
+
+`cosineDistance` is native to ClickHouse, so the semantic layer adds no storage dependency —
+it lives in the primary datastore, which is also the answer to the problem statement's
+*"judges will ask why you chose what you chose"* about context-layer storage.
+
+Every object is still classified deterministically, and **only raw tables are candidates**:
 
 ```python
 def classify(engine: str) -> str:
@@ -204,9 +222,32 @@ def classify(engine: str) -> str:
     return "aggregate" if any(a in engine for a in agg) else "raw"
 ```
 
-Resolution considers **raw tables only**. Probing an aggregate returns rollup row counts, not
-event counts, and `uniq(user_id)` does not survive aggregation — that would silently corrupt
-the baseline and every confidence score derived from it.
+Probing an aggregate returns rollup row counts, not event counts, and `uniq(user_id)` does not
+survive aggregation — that would silently corrupt the baseline and every confidence score
+derived from it.
+
+**Three guards on retrieval.** Vector search always returns a nearest neighbour, so on its own
+it can never say *"none of these"* — it would happily rank a fulfilment-sounding table first
+for a question about delivery SLAs even when that table has no `delivery_status` column. The
+guards restore that ability:
+
+| Guard | Behaviour |
+| :--- | :--- |
+| Distance threshold | best `dist` above τ → no confident candidate, decline rather than force a pick |
+| Embedding failure | fall back to passing the full catalog to the LLM — the pre-vector design, now the degraded path |
+| Missing embedding row | table included as an unranked candidate, never invisible — a table created ninety seconds ago must still be reachable |
+
+Retrieval narrows; **phase 2+3 decides**. A candidate can rank first and still be rejected as
+unanswerable.
+
+**2+3 · Resolve and answerability, one LLM call.** Merging these was awkward when resolution
+needed the entire catalog in the prompt. With three candidates it is natural: the call receives
+each candidate's description, columns, metric formulas and caveats, then returns the chosen
+table *and* the answerability verdict together. Net LLM budget drops from five calls to four.
+
+The question embedding and the top-3 distances are recorded on the span, so resolution becomes
+inspectable — a judge sees *"matched `visa_fast_track` at 0.14, next best `express_checkout`
+at 0.61"* rather than taking a model's word for it.
 
 **1c · Live probe — one SQL query, zero LLM calls.** The candidate dimension list comes from
 `system.columns` **types**, not from a hardcoded set of column names, so it stays correct on
@@ -296,7 +337,8 @@ table.
 
 | | Count |
 | :--- | :--- |
-| LLM calls | 5 — guardrail, resolve, answerability, plan, synthesize (+1 on replan) |
+| LLM calls | 4 — guardrail, resolve+answerability (merged), plan, synthesize (+1 on replan) |
+| Embedding calls | 1 — the question |
 | ClickHouse queries | 9 — 1 probe, 5 cuts, 1 intersection, 1 alt-denominator headline, 1 time series |
 | Raw rows into LLM context | **0** |
 
@@ -393,11 +435,10 @@ propagation — no manually-passed trace id, which is what produces orphan spans
 flowchart TD
     ROOT["<b>analysis::{spec_id}</b> — ROOT<br/><i>trace URL captured here</i>"]
 
-    ROOT --> S1["context_agent::load_catalog<br/>out: raw tables, aggregates, source"]
-    ROOT --> S2["context_agent::resolve_table — GENERATION<br/>out: table + <b>why this table</b>"]
+    ROOT --> S1["context_agent::semantic_retrieval<br/>out: top-3 candidates + distances, raw/aggregate classification"]
     ROOT --> S3["context_agent::load_table_semantics<br/>out: metrics, caveats, K-issues, context_version, prior_finding"]
     ROOT --> S4["context_agent::live_probe<br/>out: rows, date_range, users, null_shares"]
-    ROOT --> S5["context_agent::answerability — GENERATION<br/>out: yes|partial|no · interpretation · missing · <b>why</b>"]
+    ROOT --> S5["context_agent::resolve_and_answerability — GENERATION<br/>out: chosen table · yes/partial/no · interpretation · missing · <b>why</b>"]
     ROOT --> S6["context_agent::known_issue_match<br/>out: matched K-id or none"]
     ROOT --> S7["query_architect::plan_queries — GENERATION<br/>out: 8 SELECTs + <b>why each cut</b>"]
     ROOT --> S8["validator::check_queries<br/>out: violations[]"]
@@ -418,7 +459,7 @@ flowchart TD
 
     class ROOT root
     class S1,S3,S4,S6,S14,S15 lib
-    class S2,S5,S7,S13,S8R gen
+    class S5,S7,S13,S8R gen
     class S9,S10,S11,S12 anal
     class S8 chk
 ```
@@ -655,6 +696,17 @@ plan to plain English and asks the user to confirm when the interpretation is am
 because it adds a turn to every uncertain question and the printed interpretation already gives
 the user a one-line correction opportunity.
 
+### 11.5 Hybrid re-ranking
+
+MVP retrieves top-3 by cosine distance and lets one LLM call choose among them. That works
+while the catalog fits comfortably in a prompt — roughly a dozen tables here. Past that, the
+extended shape is a two-stage retrieve-and-rerank: widen vector retrieval to top-k, then score
+candidates on structural fit (does the table actually carry the columns the metric needs?)
+before the LLM sees them.
+
+Not needed at this scale, and adding it now would tune a retrieval pipeline against thirteen
+rows.
+
 ---
 
 ## 12. Not covered — open blockers
@@ -667,6 +719,13 @@ the user a one-line correction opportunity.
 - **`insights.finding_key`.** The trend logic requires one new column on the `insights` table
   (`spec_id, question, answer_md, confidence, cuts_json, trace_id, created_at` today). Schema
   change pending.
+- **`table_semantics` table + embedding provider.** New table (§ 4, phase 1a) written by CUJ 1
+  and read by CUJ 2. Embeddings come from the existing `GEMINI_API_KEY`; the distance threshold
+  τ needs calibrating against the five known specs before the unseen one lands.
+- **Backfill for the eight foundation tables.** They predate the pipeline, so no
+  `table_semantics` row exists for them. Either backfill descriptions from `ddl.sql` plus
+  `base_context.md`, or accept that they surface only as unranked candidates. Decide before
+  relying on questions that target them.
 - **Retirement of `infer_domain_from_question()`.** Locked decision 1 requires deleting the
   keyword ladder. Until then the unseen spec resolves to the wrong table. **Highest-priority
   implementation item.**

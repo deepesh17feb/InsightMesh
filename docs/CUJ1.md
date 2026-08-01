@@ -21,6 +21,7 @@ Maps to the problem statement's **Instrumentation Agent** deliverable:
 | Map raw events to the schema | Phase 5 field mapping → Phase 11b load |
 | Define any materialized views or aggregations needed | Phase 5 MV justification → Phase 11a |
 | Auto-update context when new tables or columns are added | Phase 11c |
+| Ensure the Analytics Agent always works from the latest context | Phase 11c `write_table_semantics` → § 6a |
 | Surface contradictions or gaps in the context layer | Phase 8 |
 | Tracing — what each agent did, why, on what context | Section 7 |
 | Submission artifacts — schema, summary, trace | Section 8 |
@@ -78,7 +79,7 @@ These names are used everywhere — prose, diagrams, Langfuse span names, and co
 
 | Agent | Owns | Never | Tools |
 | :--- | :--- | :--- | :--- |
-| **Context Agent** | All data. chDB refresh, context package, strategy decision, semantic audit, DDL execution, event loading, registry + context sync. | Designs schemas. Translates intent into SQL. | `refresh_chdb_from_live`, `build_context_package`, `decide_strategy`, `context_diff`, `execute_ddl`, `load_events`, `register_schema_version`, `context_upsert`, `append_context_changelog` |
+| **Context Agent** | All data. chDB refresh, context package, strategy decision, semantic audit, DDL execution, event loading, registry + context sync. | Designs schemas. Translates intent into SQL. | `refresh_chdb_from_live`, `build_context_package`, `decide_strategy`, `context_diff`, `execute_ddl`, `load_events`, `register_schema_version`, `context_upsert`, `append_context_changelog`, `write_table_semantics` |
 | **Instrumentation Agent** | Schema design — ordering key, partitioning, column types, TTL, MV justification, event→column field mapping. LLM-driven. | Touches any database. Emits SQL. | `design_schema` (LLM) |
 | **Query Architect** | Rendering design intent into ClickHouse DDL, MV DDL, and the `INSERT` statement. **Shared with CUJ 2**, where the same agent emits `SELECT` statements — see `docs/CUJ2.md` § 3. | Touches any database. Makes design decisions. | `design_to_ddl` (LLM) |
 | **Human operator** | The approval gate. | — | LibreChat `APPROVE` |
@@ -141,7 +142,7 @@ flowchart TD
     LOAD["<b>11b · Load events</b><br/>INSERT events.ndjson FORMAT JSONEachRow<br/>using the Instrumentation Agent's field mapping"]
     LOAD --> SYNC
 
-    SYNC["<b>11c · Sync context</b><br/>register_schema_version · context_upsert<br/>append_context_changelog"]
+    SYNC["<b>11c · Sync context</b><br/>register_schema_version · context_upsert · append_context_changelog<br/><b>write_table_semantics</b> — description + concepts + embedding from spec.md"]
     SYNC --> ART
 
     ART["<b>12 · Emit submission artifacts</b><br/>schema.sql · run_report.md · run_report.json"]
@@ -276,6 +277,52 @@ follow-up question, never as consent.
 
 ---
 
+## 6a. Semantic layer — what CUJ 1 hands to CUJ 2
+
+`spec.md` is the richest description of a feature that exists anywhere in the pipeline. CUJ 1
+reads it for schema design and, without this step, discards it. CUJ 2 would then be left
+resolving tables from names and column lists — `visa_fast_track` with columns
+`[timestamp, user_id, device_type]` carries almost no signal about what the feature does.
+
+Phase 11c therefore writes a semantic record alongside the schema registration.
+
+```sql
+CREATE TABLE table_semantics (
+    table_name  String,
+    spec_id     String,
+    description String,          -- LLM summary of spec.md, 2-3 sentences
+    concepts    String,          -- "expedited processing, premium upgrade, SLA promise"
+    embedding   Array(Float32),  -- embed(description + concepts + column names)
+    version     UInt16,
+    created_at  DateTime
+) ENGINE = MergeTree ORDER BY (table_name, version)
+```
+
+Example row for a spec CUJ 1 has just ingested:
+
+```
+table_name:  visa_fast_track
+spec_id:     06_unseen
+description: Fast Track lets applicants pay a premium for expedited visa processing,
+             chosen at checkout after destination selection. Covers upgrade impressions,
+             selection, payment, and the SLA promise shown to the applicant.
+concepts:    expedited processing, premium upgrade, SLA promise, checkout add-on
+metrics:     upgrade attach rate, incremental revenue per application
+```
+
+Versioned like every other context write, and the accompanying `context_changelog` entry
+records when the description was written and under which trace. That makes the CUJ 1 → CUJ 2
+handoff evidence rather than assertion: when a judge ingests a spec and immediately asks a
+question about it, CUJ 2 resolves the new table **because** this row exists, and the changelog
+proves when it appeared.
+
+Embeddings come from the same provider as the rest of the pipeline (`GEMINI_API_KEY`). If the
+embedding call fails the row is still written with an empty `embedding`, and CUJ 2 treats such
+rows as unranked candidates rather than invisible ones — a just-created table is never
+excluded from consideration.
+
+---
+
 ## 7. Langfuse tracing
 
 One trace per ingestion run. Everything nests under a single root span via OTEL context
@@ -300,6 +347,7 @@ flowchart TD
     ROOT --> S10["context_agent::load_events<br/>out: rows_loaded"]
     ROOT --> S11["context_agent::register_schema_version<br/>out: version"]
     ROOT --> S12["context_agent::sync_context<br/>out: upserts, changelog entries"]
+    ROOT --> S12B["context_agent::write_table_semantics — GENERATION<br/>out: description, concepts, embedding dims"]
     ROOT --> S13["report::emit_artifacts<br/>out: paths, trace URL"]
 
     classDef root fill:#c2410c,stroke:#7c2408,stroke-width:3px,color:#ffffff
@@ -310,7 +358,7 @@ flowchart TD
 
     class ROOT root
     class S1,S2,S3,S7,S9,S10,S11,S12,S13 lib
-    class S4,S5,S6R gen
+    class S4,S5,S6R,S12B gen
     class S6 chk
     class S8 hum
 ```
@@ -550,6 +598,7 @@ the submission package; chat is the surface a human actually reads.
 > | Schema registry | version `1` |
 > | Business context | 13 attributes upserted |
 > | Changelog | 13 entries, attributed to this trace |
+> | Table semantics | description + concepts written, embedded (768 dims) — the Analytics Agent can now resolve this table |
 >
 > #### Context written
 >
