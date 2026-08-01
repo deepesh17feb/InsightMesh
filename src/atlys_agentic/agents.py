@@ -91,8 +91,14 @@ def _explain_schema_rationale_tool(table_name: str, ddl: str, mv_ddl: str, consu
 
 @tool("execute_ddl")
 def _execute_ddl_tool(ddl: str, table_name: str, spec_id: str) -> dict:
-    """Execute approved DDL on ClickHouse Cloud and mirror it to schema_registry."""
+    """Execute approved DDL on ClickHouse Cloud only — does not touch chDB; see register_schema_version."""
     return tools.Tool_Execute_DDL(ddl, table_name, spec_id)
+
+
+@tool("register_schema_version")
+def _register_schema_version_tool(ddl: str, table_name: str, spec_id: str) -> dict:
+    """Mirror an already-executed DDL into chDB.schema_registry with an incremented version."""
+    return tools.Tool_Register_Schema_Version(ddl, table_name, spec_id)
 
 
 @tool("context_diff")
@@ -103,8 +109,14 @@ def _context_diff_tool(new_table: str, new_columns: list[str]) -> dict:
 
 @tool("context_upsert")
 def _context_upsert_tool(section: str, key: str, definition: str, agent: str, trace_id: str) -> int:
-    """Write a new versioned business_context row and a context_changelog entry."""
+    """Write a new versioned business_context row only — does not touch context_changelog; see append_context_changelog."""
     return tools.Tool_Context_Upsert(section, key, definition, agent, trace_id)
+
+
+@tool("append_context_changelog")
+def _append_context_changelog_tool(key: str, before: str, after: str, agent: str, trace_id: str) -> None:
+    """Append one immutable audit-trail row to context_changelog."""
+    return tools.Tool_Append_Context_Changelog(key, before, after, agent, trace_id)
 
 
 @tool("analytics_compute")
@@ -119,6 +131,15 @@ def _score_confidence_tool(
 ) -> dict:
     """Score confidence in an insight from sample size, effect size, known-issue match, cut consistency."""
     return tools.Tool_Score_Confidence(sample_size, effect_size_pct, known_issue_match, cut_consistency)
+
+
+@tool("text_to_sql")
+def _text_to_sql_tool(question: str, table_name: str, columns: list[str], mandatory_dims: list[str]) -> dict:
+    """Translate a PM question into the SELECT queries needed to answer it: one per mandatory cut dimension, plus an optional question-targeted extra."""
+    from atlys_agentic import query_architect
+    role_cfg = get_role_config("query_architect")
+    queries = query_architect.generate_sql(role_cfg, question, table_name, columns, tuple(mandatory_dims))
+    return {"queries": queries}
 
 
 _DEFAULT_AGENTS_CONFIG = {
@@ -162,9 +183,27 @@ _DEFAULT_AGENTS_CONFIG = {
         ),
         "backstory": (
             "You are a seasoned Principal Product Data Scientist who bridges complex ClickHouse analytics and executive "
-            "product strategy. Never pull raw rows into context; push aggregation into ClickHouse, mandate 3-way multi-cuts "
-            "(device_type, geoip_country_code, destination), match known platform issues (K1–K7), score confidence objectively, "
-            "and eliminate all SQL/DB jargon for PM audiences."
+            "product strategy. Never pull raw rows into context; execute exactly the read-only SELECT queries the Query "
+            "Architect hands you, match known platform issues (K1–K7), score confidence objectively from the actual result "
+            "set, and eliminate all SQL/DB jargon for PM audiences. You do not write SQL yourself."
+        ),
+        "allow_delegation": False,
+        "verbose": True,
+        "max_iter": 5,
+    },
+    "query_architect": {
+        "role": "Text-to-SQL Query Architect",
+        "goal": (
+            "Translate a PM's natural-language question into the exact ClickHouse SELECT statements needed to "
+            "answer it — one per mandatory cut dimension, plus a question-targeted query when warranted — "
+            "without ever writing, altering, or deleting data."
+        ),
+        "backstory": (
+            "You are a SQL specialist who reads product questions and writes precise, read-only ClickHouse "
+            "aggregations. You always cover the mandatory cut dimensions (device_type, geoip_country_code, "
+            "destination) the Product Analyst requires, and you add one additional targeted query only when the "
+            "question names a specific segment, platform, or condition the mandatory cuts wouldn't surface on "
+            "their own. You never write DDL or mutating SQL, and you never execute anything yourself."
         ),
         "allow_delegation": False,
         "verbose": True,
@@ -224,8 +263,25 @@ def build_context_librarian() -> Agent:
             _consult_internal_tables_tool,
             _context_diff_tool,
             _execute_ddl_tool,
+            _register_schema_version_tool,
             _context_upsert_tool,
+            _append_context_changelog_tool,
         ],
+        llm=llm(),
+        memory=False,
+        verbose=cfg.get("verbose", True),
+        allow_delegation=cfg.get("allow_delegation", False),
+        max_iter=cfg.get("max_iter", 5),
+    )
+
+
+def build_query_architect() -> Agent:
+    cfg = load_agents_config().get("query_architect", _DEFAULT_AGENTS_CONFIG["query_architect"])
+    return Agent(
+        role=cfg["role"],
+        goal=cfg["goal"],
+        backstory=cfg["backstory"].strip(),
+        tools=[_text_to_sql_tool],
         llm=llm(),
         memory=False,
         verbose=cfg.get("verbose", True),

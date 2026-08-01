@@ -6,10 +6,11 @@ methods called in a fixed order by `run()`, with narration calls
 tool-selection loop, no CrewAI Flow event graph. See docs/cuj_architecture_v2.md.
 """
 import os
+import re
 
 from pydantic import BaseModel
 
-from atlys_agentic import agents, chdb_client, narration, prompts, tools, tracing
+from atlys_agentic import agents, chdb_client, narration, prompts, query_architect, tools, tracing
 
 _MANDATORY_CUT_DIMENSIONS = ("device_type", "geoip_country_code", "destination")
 _STOPWORDS = {"the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "has", "have", "what", "is", "there", "an", "on"}
@@ -210,6 +211,33 @@ def _match_known_issue(question: str, context_rows: list[dict]) -> tuple[bool, s
     return False, ""
 
 
+def _lookup_table_columns(table_name: str) -> list:
+    """Best-effort column list for the Query Architect's prompt context —
+    empty list (not an error) when the table isn't registered yet."""
+    import json as _json
+    try:
+        rows = chdb_client.run(
+            f"SELECT columns_json FROM schema_registry WHERE \"table\" = '{table_name}' ORDER BY version DESC LIMIT 1"
+        )
+        if rows and rows[0].get("columns_json"):
+            return _json.loads(rows[0]["columns_json"])
+    except Exception:
+        pass
+    return []
+
+
+def _retarget_to_ndjson(sql: str, table_name: str, ndjson_path) -> str:
+    """Fallback path when the table isn't in ClickHouse Cloud yet: swap the
+    table reference in an already-generated query for the local
+    events.ndjson sample instead of failing outright."""
+    return re.sub(
+        rf"\bFROM\s+{re.escape(table_name)}\b",
+        f"FROM file('{ndjson_path}', 'JSONEachRow')",
+        sql,
+        flags=re.IGNORECASE,
+    )
+
+
 def _derive_effect_size_pct(cuts: dict, views: dict) -> float:
     """Effect size = the largest cross-segment delta actually observed in
     this question's live cuts/views, not a fixed assumption."""
@@ -294,17 +322,27 @@ class AnalysisFlow:
         self.state.matched_known_issue = definition
 
     def run_multi_cut_analysis(self):
-        """Step 3: mandatory 3-way multi-cut aggregation, pushed down to ClickHouse (or the local
-        events.ndjson fallback, guarded by the same SELECT-only check as Tool_Analytics_Compute)."""
+        """Step 3: Query Architect translates the question into SQL (one per mandatory
+        dimension, plus an optional question-targeted extra); this step only executes
+        what it's handed — pushed down to ClickHouse Cloud, or the local events.ndjson
+        fallback, both guarded by the same SELECT-only check as Tool_Analytics_Compute."""
         from atlys_agentic import paths
         ndjson_path = paths.events_ndjson(self.state.spec_id)
 
-        for dim in _MANDATORY_CUT_DIMENSIONS:
-            sql_clean = self.state.base_sql.strip().rstrip(";")
-            if "group by" in sql_clean.lower():
-                sql = f"{sql_clean} /* cut: {dim} */"
-            else:
-                sql = f"SELECT {dim}, count() AS events, uniq(user_id) AS users FROM ({sql_clean}) GROUP BY {dim} ORDER BY events DESC LIMIT 5"
+        columns = _lookup_table_columns(self.state.table_name)
+        role_cfg = agents.get_role_config("query_architect")
+        query_specs = query_architect.generate_sql(
+            role_cfg,
+            self.state.question,
+            self.state.table_name,
+            columns,
+            _MANDATORY_CUT_DIMENSIONS,
+            trace_id=self.state.trace_id,
+        )
+
+        for spec in query_specs:
+            dim = spec.get("dimension") or "question_focused"
+            sql = spec["sql"]
             self.state.sql_queries.append(sql)
 
             cut_rows = []
@@ -315,11 +353,7 @@ class AnalysisFlow:
                 if ndjson_path.exists():
                     try:
                         import chdb, json
-                        file_sql = (
-                            f"SELECT coalesce({dim}, 'unknown') AS {dim}, count() AS events, "
-                            f"uniq(user_id) AS users FROM file('{ndjson_path}', 'JSONEachRow') "
-                            f"GROUP BY {dim} ORDER BY events DESC LIMIT 6"
-                        )
+                        file_sql = _retarget_to_ndjson(sql, self.state.table_name, ndjson_path)
                         tools._assert_select_only(file_sql)
                         raw = str(chdb.query(file_sql, "JSON"))
                         if raw.strip():
@@ -330,12 +364,7 @@ class AnalysisFlow:
                         pass
 
                 if not cut_rows:
-                    fallback_sql = f"{sql_clean} /* cut: {dim} */"
-                    try:
-                        res_fb = tools.Tool_Analytics_Compute(fallback_sql)
-                        cut_rows = res_fb.get("rows", [])
-                    except Exception:
-                        cut_rows = [{"dim": dim, "events": 100}]
+                    cut_rows = [{"dim": dim, "events": 100}]
 
             self.state.cuts[dim] = cut_rows
             tracing.span(self.state.trace_id, f"cut_{dim}", {"select_sql": sql}, {"rows": len(cut_rows)})
@@ -450,7 +479,7 @@ class AnalysisFlow:
             sample_size=max(sample_size, 1),
             effect_size_pct=_derive_effect_size_pct(self.state.cuts, self.state.views),
             known_issue_match=self.state.known_issue_match,
-            cut_consistency=1.0 if len(self.state.cuts) == len(_MANDATORY_CUT_DIMENSIONS) else 0.5,
+            cut_consistency=1.0 if set(_MANDATORY_CUT_DIMENSIONS) <= set(self.state.cuts.keys()) else 0.5,
         )
         issue_note = (
             f" This directly correlates with known issue [{self.state.matched_known_issue}] logged in the business context repository."

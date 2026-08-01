@@ -57,7 +57,8 @@ exactly one thing — see § Tool SRP fixes below.
 | :--- | :---: | :--- | :--- |
 | **`Context Librarian`** | ✅ Sole DB & Metadata Custodian | `consult_internal_tables`<br>`context_diff`<br>`execute_ddl`<br>`register_schema_version`<br>`context_upsert`<br>`append_context_changelog` | Data governance gatekeeper. Briefs the Engineer, audits proposals, executes on approval, keeps the changelog. |
 | **`Instrumentation Engineer`** | ❌ Zero Direct DB Access | `infer_schema`<br>`generate_mv`<br>`explain_schema_rationale` | Pure design/reasoning. Computes DDL/MV, hands the proposal back to the Librarian. |
-| **`Product Analyst`** (CUJ 2) | 🔍 Read-Only Analytics | `analytics_compute` (SELECT-only, all paths)<br>`score_confidence` | Multi-cut aggregation, calibrated confidence scoring, no write path. |
+| **`Product Analyst`** (CUJ 2) | 🔍 Read-Only Analytics | `analytics_compute` (SELECT-only, all paths)<br>`score_confidence` | Executes exactly the SQL the Query Architect hands it, scores confidence. Does not write SQL. |
+| **`Query Architect`** (CUJ 2) | ❌ Zero Direct DB Access | `text_to_sql` | Pure text-to-SQL translation. Turns the PM question into SELECT statements — one per mandatory cut dimension, plus an optional question-targeted extra. Never executes, never scores, never writes. |
 
 ### Tool SRP fixes
 
@@ -175,7 +176,8 @@ flowchart TD
     Guard["Guardrail classify<br/>greeting / abusive / out-of-scope / analytical<br/>(short-circuits before any DB/LLM cost)"]:::routerNode
     JIT["jit_context_retrieval<br/>SELECT key, definition FROM business_context<br/>WHERE key LIKE 'K%'"]:::toolNode
     Match["match_known_issue — computed ONCE<br/>stored in state.known_issue_match"]:::routerNode
-    Cuts["run_multi_cut_analysis<br/>analytics_compute (SELECT-only, all paths incl. fallback)<br/>device_type / geoip_country_code / destination"]:::toolNode
+    Translate["text_to_sql (Query Architect)<br/>LLM-generated SELECT per mandatory dimension<br/>+ optional question-targeted extra<br/>SELECT-only enforced, template fallback on failure"]:::toolNode
+    Cuts["run_multi_cut_analysis (Product Analyst)<br/>analytics_compute — executes what it's handed<br/>SELECT-only, all paths incl. ndjson fallback"]:::toolNode
     Score["score_confidence<br/>f(sample_size, effect_size from actual cuts, known_issue_match, cut_consistency)"]:::toolNode
     Insight["narrate(product_analyst_cfg, synthesis_prompt)<br/>PM Markdown Insight"]:::successNode
     Save["context_upsert (Context Librarian)<br/>chDB.insights"]:::toolNode
@@ -183,7 +185,8 @@ flowchart TD
     Query --> Guard
     Guard -->|analytical| JIT
     JIT --> Match
-    Match --> Cuts
+    Match --> Translate
+    Translate --> Cuts
     Cuts --> Score
     Score --> Insight
     Insight --> Save
@@ -194,6 +197,15 @@ flowchart TD
 downstream step (cuts, scoring, narration) reads the stored value —
 no step recomputes the word-overlap match a second time.
 
+The Query Architect / Product Analyst split means **the agent that decides
+what to ask and the agent that runs it are different personas.** The
+Architect never touches ClickHouse Cloud or chDB; the Analyst never writes
+a SQL string — it only executes `query_architect.generate_sql`'s output
+and scores the result. Every generated query is SELECT-only by
+construction (checked in `query_architect.generate_sql`) and re-checked
+by `Tool_Analytics_Compute` before execution — two independent guards,
+not one shared assumption.
+
 ### Steps Breakdown
 
 1. **Guardrail** — `classify_question_intent_with_llm` (LLM judgment with
@@ -203,15 +215,23 @@ no step recomputes the word-overlap match a second time.
 2. **JIT Context Retrieval** — one `SELECT` against `business_context` for
    active K1–K7 definitions. No hidden LLM memory (`memory` never used).
 3. **Known-Issue Match** — computed exactly once; stored in state.
-4. **Multi-Cut Aggregation** — `analytics_compute`, SELECT-only enforced on
-   every path including the `events.ndjson` fallback (no longer a separate,
-   unguarded query path).
-5. **Confidence Scoring** — `score_confidence` with `effect_size_pct`
+4. **Text-to-SQL (Query Architect)** — translates the question into one
+   `SELECT` per mandatory dimension (`device_type`, `geoip_country_code`,
+   `destination`) plus an optional question-targeted extra. Falls back to
+   the old fixed per-dimension template whenever the LLM path is
+   unavailable, unparseable, or doesn't cover every mandatory dimension —
+   never ships a partial mix of generated and missing dimensions.
+5. **Multi-Cut Aggregation (Product Analyst)** — `analytics_compute`
+   executes exactly what the Query Architect handed it. SELECT-only
+   enforced on every path including the `events.ndjson` fallback (which
+   now retargets the same generated query at the local sample file rather
+   than rebuilding SQL per dimension).
+6. **Confidence Scoring** — `score_confidence` with `effect_size_pct`
    derived from the actual top-segment delta in `state.cuts`, not a
    hardcoded constant.
-6. **Synthesis & Persistence** — narration produces the PM report; the
-   Context Librarian's `context_upsert` persists it to `chDB.insights`
-   (Product Analyst never gets write access).
+7. **Synthesis & Persistence** — narration produces the PM report; the
+   Context Librarian's `context_upsert` + `append_context_changelog`
+   persist it to `chDB.insights` (Product Analyst never gets write access).
 
 ---
 

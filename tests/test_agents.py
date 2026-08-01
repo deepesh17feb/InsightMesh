@@ -8,11 +8,12 @@ def test_llm_reads_model_from_env(monkeypatch):
     assert llm.model == "gemini/gemini-flash-latest"
 
 
-def test_all_three_agents_are_memory_free():
+def test_all_four_agents_are_memory_free():
     for builder in (
         agents.build_instrumentation_engineer,
         agents.build_context_librarian,
         agents.build_product_analyst,
+        agents.build_query_architect,
     ):
         agent = builder()
         assert agent.memory in (False, None), f"{builder.__name__} must not use CrewAI native memory"
@@ -28,7 +29,7 @@ def test_instrumentation_engineer_has_schema_tools():
 
 
 def test_get_role_config_returns_plain_dict_without_building_agent():
-    for name in ("instrumentation_engineer", "context_librarian", "product_analyst"):
+    for name in ("instrumentation_engineer", "context_librarian", "product_analyst", "query_architect"):
         cfg = agents.get_role_config(name)
         assert isinstance(cfg, dict)
         assert len(cfg["role"]) > 0
@@ -38,7 +39,7 @@ def test_get_role_config_returns_plain_dict_without_building_agent():
 def test_context_librarian_has_context_tools():
     agent = agents.build_context_librarian()
     tool_names = {t.name for t in agent.tools}
-    assert {"context_diff", "context_upsert"} <= tool_names
+    assert {"context_diff", "context_upsert", "register_schema_version", "append_context_changelog"} <= tool_names
 
 
 def test_product_analyst_has_no_ddl_tool():
@@ -46,11 +47,20 @@ def test_product_analyst_has_no_ddl_tool():
     tool_names = {t.name for t in agent.tools}
     assert "execute_ddl" not in tool_names
     assert {"analytics_compute", "score_confidence"} <= tool_names
+    # Product Analyst executes/scores only — text-to-SQL is the Query
+    # Architect's job, not this agent's.
+    assert "text_to_sql" not in tool_names
+
+
+def test_query_architect_owns_text_to_sql_and_nothing_else():
+    agent = agents.build_query_architect()
+    tool_names = {t.name for t in agent.tools}
+    assert tool_names == {"text_to_sql"}
 
 
 def test_agent_configurations_and_execution_parameters():
     cfg = agents.load_agents_config()
-    for key in ("instrumentation_engineer", "context_librarian", "product_analyst"):
+    for key in ("instrumentation_engineer", "context_librarian", "product_analyst", "query_architect"):
         assert key in cfg
         assert len(cfg[key]["role"]) > 0
         assert len(cfg[key]["goal"]) > 0
@@ -60,6 +70,7 @@ def test_agent_configurations_and_execution_parameters():
         agents.build_instrumentation_engineer,
         agents.build_context_librarian,
         agents.build_product_analyst,
+        agents.build_query_architect,
     ):
         agent = builder()
         assert agent.allow_delegation is False
