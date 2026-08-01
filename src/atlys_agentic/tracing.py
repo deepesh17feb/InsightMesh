@@ -10,12 +10,14 @@ import os
 from contextlib import contextmanager
 
 from dotenv import load_dotenv
-from langfuse import get_client
+from langfuse import Langfuse
 
 from atlys_agentic import paths
 
 load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env")
 load_dotenv(paths.REPO_ROOT / ".env")
+
+_client = None
 
 
 def resolve_run_mode(run_mode: str | None = None) -> str:
@@ -45,39 +47,48 @@ def format_span_name(name: str, run_mode: str | None = None) -> str:
     return f"{mode}::{name}"
 
 
-def init_litellm_callbacks() -> None:
-    """No-op: litellm's built-in "langfuse" success_callback targets the
-    Langfuse v2 SDK's module layout (langfuse.version) and crashes against
-    the installed v4 (OTEL-based) SDK — confirmed by running it. Every
-    agent step, tool call, and result is already traced explicitly via
-    trace()/step() below, which is the primary mechanism, not a supplement,
-    so no per-LLM-call auto-tracing is lost in a way that matters here."""
-    return
+def client() -> Langfuse:
+    """Return explicit Langfuse v4 client initialized from environment."""
+    global _client
+    if _client is None:
+        pk = os.environ.get("LANGFUSE_PUBLIC_KEY")
+        sk = os.environ.get("LANGFUSE_SECRET_KEY")
+        host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
+        _client = Langfuse(public_key=pk, secret_key=sk, host=host)
+    return _client
 
 
-def client():
-    return get_client()
+def flush() -> None:
+    """Flush pending observations to Langfuse Cloud."""
+    try:
+        c = client()
+        c.flush()
+    except Exception:
+        pass
 
 
 _current_trace_id: str | None = None
+_current_trace_url: str | None = None
 
 
 @contextmanager
 def trace(name: str, input: dict | None = None, metadata: dict | None = None, run_mode: str | None = None):
     """Root span for one pipeline run (one ingestion, one analysis question).
     Everything nested inside via step() becomes part of the same trace."""
-    global _current_trace_id
+    global _current_trace_id, _current_trace_url
     mode = resolve_run_mode(run_mode)
     formatted_name = format_span_name(name, mode)
     meta = (metadata or {}).copy()
     meta["run_mode"] = mode
 
-    with client().start_as_current_observation(
+    c = client()
+    with c.start_as_current_observation(
         name=formatted_name, as_type="span", input=input or {}, metadata=meta
     ) as span:
-        _current_trace_id = client().get_current_trace_id()
+        _current_trace_id = c.get_current_trace_id()
+        _current_trace_url = c.get_trace_url(trace_id=_current_trace_id) if _current_trace_id else None
         yield span
-    client().flush()
+    c.flush()
 
 
 @contextmanager
@@ -90,27 +101,58 @@ def step(name: str, input: dict | None = None, metadata: dict | None = None, run
     meta = (metadata or {}).copy()
     meta["run_mode"] = mode
 
-    with client().start_as_current_observation(
+    c = client()
+    with c.start_as_current_observation(
         name=formatted_name, as_type="span", input=input or {}, metadata=meta
     ) as span:
         yield span
 
 
-def trace_url() -> str | None:
-    """Safe to call after the trace() block has exited — uses the trace_id
-    captured while the span was active, since get_trace_url() with no
-    explicit trace_id only works inside an active span context."""
-    if _current_trace_id is None:
-        return None
+def generation(
+    name: str,
+    model: str,
+    input: dict | list | str,
+    output: str | dict,
+    usage_details: dict | None = None,
+    metadata: dict | None = None,
+    run_mode: str | None = None,
+) -> None:
+    """Record an LLM generation observation in Langfuse."""
+    mode = resolve_run_mode(run_mode)
+    formatted_name = format_span_name(name, mode)
+    meta = (metadata or {}).copy()
+    meta["run_mode"] = mode
+
     try:
-        return client().get_trace_url(trace_id=_current_trace_id)
+        c = client()
+        with c.start_as_current_observation(
+            name=formatted_name,
+            as_type="generation",
+            input=input,
+            model=model,
+            metadata=meta,
+        ) as gen:
+            gen.update(output=output, usage_details=usage_details or {})
     except Exception:
-        return None
+        pass
+
+
+def trace_url() -> str | None:
+    """Safe to call after the trace() block has exited — returns the captured trace URL."""
+    global _current_trace_url, _current_trace_id
+    if _current_trace_url:
+        return _current_trace_url
+    if _current_trace_id:
+        try:
+            return client().get_trace_url(trace_id=_current_trace_id)
+        except Exception:
+            return None
+    return None
 
 
 def new_trace(spec_id: str, run_mode: str | None = None) -> str:
     """Create a new trace id tagged with spec_id and run_mode (test_run | live_run | dry_run)."""
-    global _current_trace_id
+    global _current_trace_id, _current_trace_url
     mode = resolve_run_mode(run_mode)
     trace_name = f"clickathon-{mode}-{spec_id}"
     try:
@@ -118,6 +160,7 @@ def new_trace(spec_id: str, run_mode: str | None = None) -> str:
         if hasattr(c, "trace"):
             t = c.trace(name=trace_name, tags=[spec_id, mode])
             _current_trace_id = getattr(t, "id", str(t))
+            _current_trace_url = c.get_trace_url(trace_id=_current_trace_id)
             return _current_trace_id
     except Exception:
         pass
@@ -143,7 +186,7 @@ def span(
         c = client()
         if hasattr(c, "span"):
             c.span(trace_id=trace_id, name=formatted_name, input=input, output=output, metadata=meta)
-        elif hasattr(c, "start_as_current_observation"):
+        else:
             with c.start_as_current_observation(name=formatted_name, as_type="span", input=input, metadata=meta) as s:
                 if hasattr(s, "update"):
                     s.update(output=output)
