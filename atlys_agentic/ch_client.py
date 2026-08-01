@@ -1,7 +1,6 @@
 import os
 import subprocess
 
-import clickhouse_connect
 from dotenv import load_dotenv
 
 from atlys_agentic import paths
@@ -14,6 +13,7 @@ _client = None
 def get_client():
     global _client
     if _client is None:
+        import clickhouse_connect
         _client = clickhouse_connect.get_client(
             host=os.environ["CLICKHOUSE_HOST"],
             port=int(os.environ.get("CLICKHOUSE_PORT", "8443")),

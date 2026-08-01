@@ -9,6 +9,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from atlys_agentic import ch_client, chdb_client, paths
+
 _LOW_CARDINALITY_HINTS = {
     "device_type", "os", "currency", "channel", "saved_method_type",
     "geoip_country_code", "auth_method", "payment_method", "card_type",
@@ -115,3 +117,200 @@ def Tool_Infer_Schema(ndjson_path: Path, spec_md_text: str, table_name: str) -> 
         f"ORDER BY ({order_cols})\n"
         f"TTL timestamp + INTERVAL 12 MONTH;"
     )
+
+
+_SEGMENT_COLUMN_CANDIDATES = ("device_type", "os", "geoip_country_code", "destination")
+
+
+def _columns_from_ddl(ddl: str) -> list[str]:
+    body = ddl.split("(", 1)[1].rsplit(")", 1)[0]
+    cols = []
+    for line in body.splitlines():
+        line = line.strip().rstrip(",")
+        if line:
+            cols.append(line.split()[0])
+    return cols
+
+
+def Tool_Generate_MV(table_name: str, ddl: str, funnel_step_column: str = "event") -> str:
+    """Daily segment-rollup MV, only when a segment column exists — an MV
+    over a table with no segment dimension wouldn't earn its keep."""
+    cols = _columns_from_ddl(ddl)
+    segment_col = next((c for c in _SEGMENT_COLUMN_CANDIDATES if c in cols), None)
+    if segment_col is None:
+        return ""
+
+    step_expr = f"{funnel_step_column}, " if funnel_step_column in cols else ""
+    mv_name = f"{table_name}_daily_mv"
+    return (
+        f"-- justification: pre-aggregates daily/{segment_col} volume so the "
+        f"Analyst never scans raw {table_name} rows for segment cuts\n"
+        f"CREATE MATERIALIZED VIEW IF NOT EXISTS {mv_name}\n"
+        f"ENGINE = SummingMergeTree\n"
+        f"PARTITION BY toYYYYMM(day)\n"
+        f"ORDER BY (day, {segment_col}{', ' + funnel_step_column if step_expr else ''})\n"
+        f"AS SELECT\n"
+        f"    toYYYYMMDD(timestamp) AS day,\n"
+        f"    {segment_col},\n"
+        f"    {step_expr}"
+        f"count() AS events,\n"
+        f"    uniq(user_id) AS users\n"
+        f"FROM {table_name}\n"
+        f"GROUP BY day, {segment_col}{', ' + funnel_step_column if step_expr else ''};"
+    )
+
+
+def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str) -> dict:
+    """Execute DDL on ClickHouse Cloud, mirror to chDB schema_registry with a
+    monotonically increasing version per table. On failure, drop whatever
+    partial object exists and report the error instead of leaving Cloud in a
+    half-created state."""
+    try:
+        ch_client.command(ddl)
+    except Exception as exc:  # noqa: BLE001 - deliberately broad: any Cloud DDL failure must roll back
+        try:
+            ch_client.select(f"DROP TABLE IF EXISTS {table_name}")
+        except Exception:
+            pass
+        return {"status": "rolled_back", "table": table_name, "version": None, "error": str(exc)}
+
+    chdb_client.init_schema()
+    existing = chdb_client.run(
+        f"SELECT max(version) AS v FROM schema_registry WHERE table = '{table_name}'"
+    )
+    version = (existing[0]["v"] or 0) + 1 if existing and existing[0]["v"] is not None else 1
+    columns_json = json.dumps(_columns_from_ddl(ddl)).replace("'", "''")
+    ddl_escaped = ddl.replace("'", "''")
+    chdb_client.run(
+        f"""INSERT INTO schema_registry VALUES
+        ('{table_name}', '{ddl_escaped}', '{columns_json}', '{spec_id}', {version}, now())""",
+        fmt="CSV",
+    )
+    return {"status": "ok", "table": table_name, "version": version, "error": None}
+
+
+def Tool_Analytics_Compute(select_sql: str) -> dict:
+    """Push all aggregation into ClickHouse; never let raw rows or non-SELECT
+    statements reach the caller (Analyst path is read-only by construction)."""
+    if not re.match(r"^\s*SELECT\b", select_sql, re.IGNORECASE):
+        raise ValueError("Tool_Analytics_Compute is SELECT-only")
+    rows = ch_client.select(select_sql)
+    return {"rows": rows}
+
+
+_KNOWN_UNDOCUMENTED_COLUMNS = {"failed_attempt_threshold", "eta_shown"}
+
+
+def Tool_Context_Diff(new_table: str, new_columns: list[str]) -> dict:
+    context_rows = chdb_client.run("SELECT key, definition FROM business_context")
+    conversion_rows = [r for r in context_rows if "conversion" in r.get("key", "").lower()]
+
+    conflicts = []
+    has_sessions_denominator = any("sessions" in r.get("definition", "").lower() for r in conversion_rows)
+    has_application_started_denominator = any(
+        "application_started" in r.get("definition", "").lower() for r in conversion_rows
+    )
+    if has_sessions_denominator and has_application_started_denominator:
+        conflicts.append(
+            "Conversion-rate denominator conflict: base_context defines conversion rate "
+            "both as purchases/sessions and purchases/application_started — pick one before "
+            "the Analyst reports it."
+        )
+
+    gaps = [
+        f"{new_table}.{col} has no matching business_context definition (undocumented column)"
+        for col in new_columns
+        if col in _KNOWN_UNDOCUMENTED_COLUMNS
+    ]
+
+    additions = [f"{new_table}.{col}" for col in new_columns]
+
+    return {"additions": additions, "conflicts": conflicts, "gaps": gaps}
+
+
+def Tool_Context_Upsert(section: str, key: str, definition: str, agent: str, trace_id: str) -> int:
+    existing_version = chdb_client.run(
+        f"SELECT max(version) AS v FROM business_context WHERE key = '{key}'"
+    )
+    version = (existing_version[0]["v"] or 0) + 1 if existing_version and existing_version[0]["v"] is not None else 1
+
+    before_rows = chdb_client.run(
+        f"SELECT definition FROM business_context WHERE key = '{key}' ORDER BY version DESC LIMIT 1"
+    )
+    before = before_rows[0]["definition"] if before_rows else ""
+
+    definition_escaped = definition.replace("'", "''")
+    section_escaped = section.replace("'", "''")
+    key_escaped = key.replace("'", "''")
+    next_id = version * 100000 + hash(key) % 100000
+
+    chdb_client.run(
+        f"""INSERT INTO business_context VALUES
+        ({next_id}, '{section_escaped}', '{key_escaped}', '{definition_escaped}',
+         {version}, now(), '{agent}', 'active')""",
+        fmt="CSV",
+    )
+    after_escaped = definition.replace("'", "''")
+    before_escaped = before.replace("'", "''")
+    chdb_client.run(
+        f"""INSERT INTO context_changelog VALUES
+        (now(), 'context_upsert', '{before_escaped}', '{after_escaped}', '{agent}', '{trace_id}')""",
+        fmt="CSV",
+    )
+    return version
+
+
+def _sample_size_component(n: int) -> float:
+    if n <= 0:
+        return 0.0
+    import math
+    return min(1.0, math.log10(n + 1) / 5.0)  # ~1.0 at n=100k
+
+
+def Tool_Score_Confidence(
+    sample_size: int, effect_size_pct: float, known_issue_match: bool, cut_consistency: float
+) -> dict:
+    n_component = _sample_size_component(sample_size)
+    effect_component = min(1.0, abs(effect_size_pct) / 20.0)  # ~1.0 at a 20pp+ swing
+    consistency_component = max(0.0, min(1.0, cut_consistency))
+    known_issue_bonus = 0.15 if known_issue_match else 0.0
+
+    raw = (
+        0.35 * n_component
+        + 0.30 * effect_component
+        + 0.20 * consistency_component
+        + known_issue_bonus
+    )
+    score = max(0.0, min(1.0, raw))
+
+    parts = [
+        f"sample size n={sample_size} ({'strong' if n_component > 0.7 else 'thin'})",
+        f"effect {effect_size_pct:+.1f}pp vs baseline ({'large' if effect_component > 0.7 else 'small'})",
+        f"consistent across {cut_consistency:.0%} of cuts",
+    ]
+    if known_issue_match:
+        parts.append("matches a documented known issue (K1-K7)")
+    rationale = "; ".join(parts) + f" -> confidence {score:.2f}"
+
+    return {"score": round(score, 2), "rationale": rationale}
+
+
+def Tool_Emit_Viz() -> dict:
+    schema_history = chdb_client.run(
+        "SELECT table, version, spec_id, created_at FROM schema_registry ORDER BY created_at DESC"
+    )
+    insights = chdb_client.run(
+        "SELECT spec_id, question, confidence, created_at FROM insights ORDER BY created_at DESC"
+    )
+    context_changelog = chdb_client.run(
+        "SELECT ts, change_type, agent, trace_id FROM context_changelog ORDER BY ts DESC"
+    )
+    result = {
+        "schema_history": schema_history,
+        "insights": insights,
+        "context_changelog": context_changelog,
+    }
+    paths.OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    (paths.OUTPUTS_DIR / "viz_snapshot.json").write_text(json.dumps(result, indent=2, default=str))
+    return result
+

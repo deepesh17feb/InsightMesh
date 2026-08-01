@@ -1,8 +1,6 @@
 import json
 import re
 
-import chdb
-
 from atlys_agentic import paths
 
 _SCHEMA_DDL = [
@@ -54,6 +52,7 @@ _SCHEMA_DDL = [
 
 def run(sql: str, fmt: str = "JSON"):
     paths.CHDB_PATH.mkdir(parents=True, exist_ok=True)
+    import chdb
     result = chdb.query(sql, output_format=fmt, path=str(paths.CHDB_PATH))
     text = str(result)
     if fmt == "JSON" and text.strip():
