@@ -79,9 +79,30 @@ def _load_events(ndjson_path: Path) -> list[dict]:
     return events
 
 
-def Tool_Infer_Schema(ndjson_path: Path, spec_md_text: str, table_name: str) -> str:
+def Tool_Infer_Table_Name(spec_id: str, spec_md_text: str = "") -> str:
+    """Infer the canonical ClickHouse table name from the feature spec or spec ID."""
+    if spec_md_text:
+        for line in spec_md_text.splitlines():
+            line_s = line.strip()
+            if line_s.startswith("#"):
+                m = re.search(r"#+\s*(?:Feature(?:\s*spec)?\s*[-—:]?\s*)?(.*)", line_s, re.IGNORECASE)
+                if m and m.group(1).strip():
+                    raw_title = m.group(1).strip()
+                    clean_title = re.sub(r"[^\w\s]", " ", raw_title)
+                    words = [w.lower() for w in clean_title.split() if w]
+                    if words:
+                        return "_".join(words[:4])
+    clean_id = re.sub(r"^\d+_", "", spec_id.strip("/").split("/")[-1])
+    return clean_id or "event_table"
+
+
+def Tool_Infer_Schema(ndjson_path: Path, spec_md_text: str, table_name: str = None) -> str:
     """Infer a production DDL from an NDJSON sample. Deterministic: same
-    sample + table name always produces the same DDL."""
+    sample + table name always produces the same DDL.
+    If table_name is omitted, it is inferred from spec_md_text or spec_id."""
+    if not table_name:
+        table_name = Tool_Infer_Table_Name(str(ndjson_path), spec_md_text)
+
     events = _load_events(ndjson_path)
     flattened = [_flatten(e) for e in events]
 

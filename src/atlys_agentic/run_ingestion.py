@@ -24,8 +24,9 @@ def main(argv: list[str] = None) -> int:
     )
     parser.add_argument(
         "--table",
-        required=True,
-        help="Destination ClickHouse table name (e.g. express_checkout)",
+        required=False,
+        default=None,
+        help="Target ClickHouse table name (optional; if omitted, automatically suggested by the agent from the spec)",
     )
     parser.add_argument(
         "--dry-run",
