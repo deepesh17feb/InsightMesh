@@ -32,6 +32,7 @@ dev = [
 [project.scripts]
 atlys-ingest = "atlys_agentic.run_ingestion:main"
 atlys-chat = "atlys_agentic.run_chat:main"
+atlys-ui = "atlys_agentic.ui_ingestion:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

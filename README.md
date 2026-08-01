@@ -79,9 +79,27 @@ pytest tests/test_e2e_rehearsal.py -v
 
 ## 3. Actual Pipeline Execution
 
-### CUJ 1: Ingestion Pipeline (DevOps / CLI)
+### CUJ 1: Ingestion Pipeline (Web UI & CLI)
 
-To ingest a new feature specification and event stream into ClickHouse Cloud:
+#### 1. Visual Web Portal (FastAPI & Streamlit)
+
+##### Option A: Built-in FastAPI Web Dashboard
+Start the platform server and open **`http://localhost:8008/ui/ingestion`** (or `http://localhost:8008/`):
+```bash
+uvicorn atlys_agentic.run_chat:app --host 0.0.0.0 --port 8008 --reload
+```
+- **Feature Spec Selector**: Choose any spec (`01_express_checkout`, `02_group_family`, etc.) with automatic table name resolution.
+- **Generate Proposal (Dry Run)**: Generates ClickHouse DDL, Materialized View, and Context Diff Audit with zero cloud or chDB mutation.
+- **Approve & Deploy**: One-click confirmation gate to deploy to ClickHouse Cloud and record versioned snapshots in `schema_registry`.
+
+##### Option B: Streamlit Ingestion Portal
+```bash
+streamlit run src/atlys_agentic/ui_ingestion.py
+# or via entrypoint:
+atlys-ui
+```
+
+#### 2. Command-Line Interface (CLI)
 
 ```bash
 # Interactive Mode (Prompts for 'APPROVE' before applying to ClickHouse Cloud)
