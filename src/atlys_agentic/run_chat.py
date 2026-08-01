@@ -51,7 +51,34 @@ class IngestionRequest(BaseModel):
     table_name: str = ""
 
 
+class AnalysisRequest(BaseModel):
+    question: str
+    spec_id: str = "general"
+    base_sql: str = "SELECT * FROM purchase_completed"
+
+
 _DEFAULT_BASE_SQL = "SELECT * FROM purchase_completed"
+
+
+@app.post("/api/analyze/query")
+def analyze_query(req: AnalysisRequest):
+    chdb_client.init_schema()
+    chdb_client.init_base_context()
+    result = analysis_flow.run(question=req.question, spec_id=req.spec_id, base_sql=req.base_sql)
+    return {
+        "status": "success",
+        "question": req.question,
+        "spec_id": req.spec_id,
+        "executive_summary": result.get("executive_summary", ""),
+        "answer_md": result.get("answer_md", ""),
+        "confidence": result.get("confidence", {}),
+        "known_issue_match": result.get("known_issue_match", False),
+        "matched_known_issue": result.get("matched_known_issue", ""),
+        "cuts": result.get("cuts", {}),
+        "views": result.get("views", {}),
+        "sql_queries": result.get("sql_queries", []),
+        "trace_id": result.get("trace_id", ""),
+    }
 
 
 @app.get("/api/specs")

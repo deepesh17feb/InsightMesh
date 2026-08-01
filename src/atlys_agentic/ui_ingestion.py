@@ -129,6 +129,25 @@ def render_app():
         st.warning(f"No specs found in {paths.SPECS_DIR}")
         return
 
+    # Workflow Switcher (CUJ 1 vs CUJ 2)
+    workflow = st.radio(
+        "Workflow",
+        ["⚡ CUJ 1: Ingestion & Schema Consultation", "🔍 CUJ 2: Root-Cause & Analytics Investigation"],
+        index=0,
+        horizontal=True,
+    )
+    st.write("")
+
+    if "CUJ 1" in workflow:
+        _render_cuj1_ingestion(available_specs)
+    else:
+        _render_cuj2_investigation(available_specs)
+
+
+def _render_cuj1_ingestion(available_specs: list[str]):
+    import streamlit as st
+    from atlys_agentic import tools
+
     # Sidebar: Spec Selection & Overrides
     with st.sidebar:
         st.subheader("📁 Feature Specification")
@@ -298,6 +317,127 @@ def render_app():
                             st.error(f"Deployment rejected or failed: {result}")
             else:
                 st.caption("🔒 *Dry-Run Active: ClickHouse Cloud and chDB were not modified.*")
+
+
+def _render_cuj2_investigation(available_specs: list[str]):
+    import pandas as pd
+    import streamlit as st
+    from atlys_agentic.flows import analysis_flow
+
+    st.markdown("### 🔍 Root-Cause & Analytics Investigation (CUJ 2)")
+    st.caption("Autonomous multi-cut metric slicing, known-issue hypothesis matching, and statistical confidence scoring.")
+
+    # Left / Right Split for Investigation
+    col_query, col_results = st.columns([1, 1], gap="medium")
+
+    presets = {
+        "📱 Scenario 1: iOS OTP WebKit Autofill Regression": {
+            "question": "Is there an iOS OTP drop on Express Checkout during verification?",
+            "spec": "01_express_checkout" if "01_express_checkout" in available_specs else available_specs[0],
+            "sql": "SELECT * FROM express_checkout",
+        },
+        "💳 Scenario 2: Payment Gateway 3DS Latency & Dropoff": {
+            "question": "Why did conversion drop for Credit Card transactions during 3DS challenge?",
+            "spec": "01_express_checkout" if "01_express_checkout" in available_specs else available_specs[0],
+            "sql": "SELECT * FROM express_checkout",
+        },
+        "🌍 Scenario 3: Cross-Country Funnel Comparison": {
+            "question": "Compare checkout completion rates and dropoff across US, UK, and UAE cohorts",
+            "spec": "01_express_checkout" if "01_express_checkout" in available_specs else available_specs[0],
+            "sql": "SELECT * FROM express_checkout",
+        },
+        "✏️ Scenario 4: Custom Diagnostic Question": {
+            "question": "",
+            "spec": available_specs[0],
+            "sql": "SELECT * FROM express_checkout",
+        },
+    }
+
+    with col_query:
+        st.subheader("1. Diagnostic Investigation Scope")
+        selected_preset = st.selectbox("Choose Diagnostic Preset", list(presets.keys()), index=0)
+        preset_data = presets[selected_preset]
+
+        default_question = preset_data["question"]
+        question = st.text_area("Diagnostic Question", value=default_question, height=90, placeholder="e.g. Why did conversion drop on iOS during OTP verification?")
+
+        spec_id = st.selectbox("Context Domain / Spec", available_specs, index=available_specs.index(preset_data["spec"]) if preset_data["spec"] in available_specs else 0)
+
+        with st.expander("⚙️ ClickHouse Analytical Query Target"):
+            base_sql = st.text_input("Base Analytical SQL", value=preset_data["sql"])
+
+        run_investigation = st.button("🔍 Run Multi-Agent Investigation", type="primary", use_container_width=True)
+
+    with col_results:
+        st.subheader("2. Investigation Findings & 3-View Snapshot")
+
+        if run_investigation or "analysis_result" in st.session_state:
+            if run_investigation:
+                with st.spinner("Product Analyst & Context Librarian slicing multi-cut dimensions & checking known issues..."):
+                    chdb_client.init_schema()
+                    chdb_client.init_base_context()
+                    result = analysis_flow.run(question=question, spec_id=spec_id, base_sql=base_sql)
+                    st.session_state["analysis_result"] = result
+                    st.session_state["last_question"] = question
+
+            res = st.session_state.get("analysis_result")
+            if res:
+                # 1. Executive Incident Finding Card
+                if res.get("known_issue_match"):
+                    st.error(f"⚠️ **Incident Correlated with Known Issue:**\n\n`{res.get('matched_known_issue')}`")
+                else:
+                    st.success("✅ **Multi-Cut Analysis Complete**: No cataloged platform bug matched this cohort.")
+
+                st.info(f"**Executive Finding:** {res.get('executive_summary')}")
+
+                # 2. Confidence Metric Row
+                conf = res.get("confidence", {})
+                score = conf.get("score", 0.0)
+                score_label = "HIGH CONFIDENCE" if score >= 0.8 else ("MODERATE" if score >= 0.5 else "LOW SAMPLE")
+
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Confidence Score", f"{score:.2f} / 1.0")
+                c2.metric("Rating", score_label)
+                c3.metric("Dimensions Sliced", f"{len(res.get('cuts', {}))} Dims")
+
+                # 3. Interactive 3-View Visualization Snapshot
+                views = res.get("views", {})
+                tab_trend, tab_waterfall, tab_deltas = st.tabs(["📈 Funnel Conversion Trend", "📊 Segment Breakdown", "📋 Metric Deltas"])
+
+                with tab_trend:
+                    trend_data = views.get("conversion_trend", [])
+                    if trend_data:
+                        df_trend = pd.DataFrame(trend_data).set_index("date")
+                        st.line_chart(df_trend)
+                        st.caption("Time-series comparison: Baseline cohort vs Observed affected cohort.")
+                    else:
+                        st.write("No trend dataset returned.")
+
+                with tab_waterfall:
+                    waterfall_data = views.get("segment_waterfall", [])
+                    if waterfall_data:
+                        df_wf = pd.DataFrame(waterfall_data).set_index("segment")
+                        st.bar_chart(df_wf["dropoff_pct"])
+                        st.caption("Segment dropoff rates (% dropoff by cohort).")
+                    else:
+                        st.write("No waterfall dataset returned.")
+
+                with tab_deltas:
+                    deltas_data = views.get("metric_deltas", [])
+                    if deltas_data:
+                        df_deltas = pd.DataFrame(deltas_data)
+                        st.dataframe(df_deltas, use_container_width=True, hide_index=True)
+                    else:
+                        st.write("No delta metrics returned.")
+
+                # 4. Agent SQL Execution Trace
+                with st.expander("🛠️ Executed ClickHouse SQL & Analytical Cuts", expanded=False):
+                    sql_queries = res.get("sql_queries", [])
+                    if sql_queries:
+                        for idx, q in enumerate(sql_queries, 1):
+                            st.markdown(f"**Query {idx}:**")
+                            st.code(q, language="sql")
+                    st.caption(f"Trace ID: `{res.get('trace_id')}`")
 
 
 def main():
