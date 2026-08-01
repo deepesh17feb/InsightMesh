@@ -70,3 +70,12 @@ def chat_completions(req: ChatCompletionRequest):
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
+
+
+def main():
+    import uvicorn
+    uvicorn.run("atlys_agentic.run_chat:app", host="0.0.0.0", port=8008, reload=True)
+
+
+if __name__ == "__main__":
+    main()
