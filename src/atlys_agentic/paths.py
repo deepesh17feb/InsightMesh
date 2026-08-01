@@ -17,6 +17,7 @@ INSIGHTS_DIR = OUTPUTS_DIR / "insights"
 TRACES_DIR = OUTPUTS_DIR / "traces"
 SUBMISSION_DIR = ATLYS_AGENTIC_DIR / "submission"
 UNSEEN_SPECS_DIR = ATLYS_AGENTIC_DIR / "specs" / "06_unseen"
+AGENTS_CONFIG_YAML = ATLYS_AGENTIC_DIR / "config" / "agents.yaml"
 
 for _d in (OUTPUTS_DIR, SCHEMAS_DIR, INSIGHTS_DIR, TRACES_DIR, SUBMISSION_DIR, UNSEEN_SPECS_DIR):
     _d.mkdir(parents=True, exist_ok=True)

@@ -103,14 +103,55 @@ def _score_confidence_tool(
     return tools.Tool_Score_Confidence(sample_size, effect_size_pct, known_issue_match, cut_consistency)
 
 
-def build_instrumentation_engineer() -> Agent:
-    return Agent(
-        role="Senior ClickHouse DBA",
-        goal="Turn a feature spec and raw event sample into production-grade DDL and materialized views.",
-        backstory=(
+_DEFAULT_AGENTS_CONFIG = {
+    "instrumentation_engineer": {
+        "role": "Senior ClickHouse DBA",
+        "goal": "Turn a feature spec and raw event sample into production-grade DDL and materialized views.",
+        "backstory": (
             "You design ClickHouse schemas for high-volume event data. You never inherit the "
             "legacy id-first ORDER BY from older tables; you always lead with (timestamp, user_id)."
         ),
+    },
+    "context_librarian": {
+        "role": "Business-Logic Gatekeeper and Auditor",
+        "goal": "Keep business_context current, versioned, and free of unflagged contradictions.",
+        "backstory": (
+            "You treat base_context.md with suspicion. Every new table or column gets diffed "
+            "against the existing context; conflicts and gaps get surfaced, never silently ignored."
+        ),
+    },
+    "product_analyst": {
+        "role": "Principal Data Scientist",
+        "goal": "Answer PM questions with an actionable insight, the why, a confidence score, and no DB jargon.",
+        "backstory": (
+            "You never pull raw rows into context — you push aggregation into ClickHouse and "
+            "interpret JSON summaries. You always cut by device, geo, and destination before concluding."
+        ),
+    },
+}
+
+
+def load_agents_config() -> dict:
+    """Load agent persona configuration (role, goal, backstory) from YAML config file."""
+    config_file = getattr(paths, "AGENTS_CONFIG_YAML", paths.ATLYS_AGENTIC_DIR / "config" / "agents.yaml")
+    if config_file.exists():
+        try:
+            import yaml
+            with open(config_file, "r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f)
+                if isinstance(loaded, dict) and loaded:
+                    return loaded
+        except Exception:
+            pass
+    return _DEFAULT_AGENTS_CONFIG
+
+
+def build_instrumentation_engineer() -> Agent:
+    cfg = load_agents_config().get("instrumentation_engineer", _DEFAULT_AGENTS_CONFIG["instrumentation_engineer"])
+    return Agent(
+        role=cfg["role"],
+        goal=cfg["goal"],
+        backstory=cfg["backstory"].strip(),
         tools=[_infer_schema_tool, _generate_mv_tool, _execute_ddl_tool],
         llm=llm(),
         memory=False,
@@ -119,13 +160,11 @@ def build_instrumentation_engineer() -> Agent:
 
 
 def build_context_librarian() -> Agent:
+    cfg = load_agents_config().get("context_librarian", _DEFAULT_AGENTS_CONFIG["context_librarian"])
     return Agent(
-        role="Business-Logic Gatekeeper and Auditor",
-        goal="Keep business_context current, versioned, and free of unflagged contradictions.",
-        backstory=(
-            "You treat base_context.md with suspicion. Every new table or column gets diffed "
-            "against the existing context; conflicts and gaps get surfaced, never silently ignored."
-        ),
+        role=cfg["role"],
+        goal=cfg["goal"],
+        backstory=cfg["backstory"].strip(),
         tools=[_context_diff_tool, _context_upsert_tool],
         llm=llm(),
         memory=False,
@@ -134,13 +173,11 @@ def build_context_librarian() -> Agent:
 
 
 def build_product_analyst() -> Agent:
+    cfg = load_agents_config().get("product_analyst", _DEFAULT_AGENTS_CONFIG["product_analyst"])
     return Agent(
-        role="Principal Data Scientist",
-        goal="Answer PM questions with an actionable insight, the why, a confidence score, and no DB jargon.",
-        backstory=(
-            "You never pull raw rows into context — you push aggregation into ClickHouse and "
-            "interpret JSON summaries. You always cut by device, geo, and destination before concluding."
-        ),
+        role=cfg["role"],
+        goal=cfg["goal"],
+        backstory=cfg["backstory"].strip(),
         tools=[_analytics_compute_tool, _score_confidence_tool],
         llm=llm(),
         memory=False,
