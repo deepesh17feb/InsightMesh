@@ -7,7 +7,7 @@ name = "atlys-agentic"
 version = "0.1.0"
 description = "Atlys Agentic Analytics System"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11, <3.14"
 license = {text = "Proprietary"}
 dependencies = [
     "crewai>=1.15.0",
