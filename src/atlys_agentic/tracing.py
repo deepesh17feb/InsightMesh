@@ -14,6 +14,7 @@ from langfuse import get_client
 from atlys_agentic import paths
 
 load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env")
+load_dotenv(paths.REPO_ROOT / ".env")
 
 
 def init_litellm_callbacks() -> None:

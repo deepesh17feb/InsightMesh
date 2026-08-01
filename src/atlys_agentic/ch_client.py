@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from atlys_agentic import paths
 
 load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env")
+load_dotenv(paths.REPO_ROOT / ".env")
 
 _client = None
 
