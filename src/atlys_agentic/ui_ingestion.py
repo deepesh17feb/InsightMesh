@@ -407,19 +407,40 @@ def _render_cuj2_investigation(available_specs: list[str]):
         default_question = preset_data["question"]
         question = st.text_area("Diagnostic Question", value=default_question, height=90, placeholder="e.g. Why did conversion drop on iOS during OTP verification?")
 
-        spec_id = st.selectbox("Context Domain / Spec", available_specs, index=available_specs.index(preset_data["spec"]) if preset_data["spec"] in available_specs else 0)
+        # Automatically detect domain & target table from question
+        auto_spec, auto_table = analysis_flow.infer_domain_from_question(question)
 
-        with st.expander("⚙️ ClickHouse Analytical Query Target"):
-            base_sql = st.text_input("Base Analytical SQL", value=preset_data["sql"])
+        # Sleek Auto-Detected Context Domain Badge
+        st.markdown(
+            f"""
+            <div style="background: rgba(30, 58, 138, 0.25); border: 1px solid #3B82F6; border-radius: 7px; padding: 0.45rem 0.65rem; margin: 0.5rem 0 0.65rem 0;">
+                <div style="font-size: 0.68rem; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">⚡ Auto-Inferred Context Domain & Table</div>
+                <div style="font-size: 0.88rem; font-weight: 700; color: #60A5FA; font-family: 'JetBrains Mono', monospace; margin-top: 0.1rem;">
+                    Spec: {auto_spec} &nbsp;|&nbsp; Table: {auto_table}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        run_investigation = st.button("🔍 Run Multi-Agent Investigation", type="primary", use_container_width=True)
+        with st.expander("⚙️ Override Domain or Target Table (Optional)", expanded=False):
+            override_spec = st.checkbox("Manual Domain Override", value=False)
+            if override_spec:
+                spec_id = st.selectbox("Selected Feature Spec", available_specs, index=available_specs.index(auto_spec) if auto_spec in available_specs else 0)
+                base_sql = st.text_input("Base Analytical SQL", value=f"SELECT * FROM {auto_table}")
+            else:
+                spec_id = auto_spec
+                base_sql = f"SELECT * FROM {auto_table}"
+
+        st.caption("⚡ **Live Data Engine**: Queries ClickHouse Cloud live with automatic fallback to high-speed embedded chDB event aggregations.")
+        run_investigation = st.button("🔍 Run Live Root-Cause Investigation", type="primary", use_container_width=True)
 
     with col_results:
         st.subheader("2. Investigation Findings & 3-View Snapshot")
 
         if run_investigation or "analysis_result" in st.session_state:
             if run_investigation:
-                with st.spinner("Product Analyst & Context Librarian slicing multi-cut dimensions & checking known issues..."):
+                with st.spinner("Product Analyst & Context Librarian slicing live multi-cut dimensions & checking known issues..."):
                     chdb_client.init_schema()
                     chdb_client.init_base_context()
                     result = analysis_flow.run(question=question, spec_id=spec_id, base_sql=base_sql)
