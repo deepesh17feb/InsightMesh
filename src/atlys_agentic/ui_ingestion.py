@@ -352,22 +352,23 @@ def _render_cuj1_ingestion(available_specs: list[str]):
             if not is_dry_run:
                 st.divider()
                 st.subheader("3. Human-in-the-Loop (HITL) Gate")
-                confirm = st.checkbox(f"I authorize executing this DDL on ClickHouse Cloud table `{table_name}`.")
+                confirm = st.checkbox(f"I authorize executing this DDL on ClickHouse Cloud table `{resolved_table}`.")
 
                 if st.button("🚀 Approve & Deploy to ClickHouse Cloud", type="secondary", disabled=not confirm, width="stretch"):
                     with st.spinner("Executing DDL on ClickHouse Cloud and recording version..."):
                         result = ingestion_flow.run(
                             spec_id=selected_spec,
-                            table_name=table_name,
+                            table_name=resolved_table,
                             input_fn=lambda _: "APPROVE",
                             dry_run=False,
                         )
                         if result.get("approved"):
                             st.balloons()
-                            st.success(f"🎉 Successfully deployed `{table_name}` to ClickHouse Cloud and registered version in `chDB.schema_registry`!")
+                            st.success(f"🎉 Successfully deployed `{resolved_table}` to ClickHouse Cloud and registered version in `chDB.schema_registry`!")
                         else:
                             st.error(f"Deployment rejected or failed: {result}")
             else:
+                st.caption("🔒 *Dry-Run Active: ClickHouse Cloud and chDB were not modified.*")
                 st.caption("🔒 *Dry-Run Active: ClickHouse Cloud and chDB were not modified.*")
 
 
