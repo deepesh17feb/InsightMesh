@@ -114,17 +114,44 @@ def list_specs():
 def propose_ingestion(req: IngestionRequest):
     chdb_client.init_schema()
     chdb_client.init_base_context()
-    result = ingestion_flow.run(spec_id=req.spec_id, table_name=req.table_name, dry_run=True)
+    result = ingestion_flow.run(
+        spec_id=req.spec_id,
+        table_name=req.table_name,
+        dry_run=True,
+    )
     return {
         "status": "success",
         "spec_id": req.spec_id,
         "table_name": result.get("table_name") or req.table_name,
         "dry_run": True,
+        "approved": result.get("approved", True),
         "ddl": result.get("ddl", ""),
         "mv_ddl": result.get("mv_ddl", ""),
         "diff_result": result.get("diff_result", {}),
         "table_consultation": result.get("table_consultation", {}),
         "reasoning": result.get("reasoning", {}),
+        "trace_id": result.get("trace_id", ""),
+    }
+
+
+@app.post("/api/ingest/approve-dry-run")
+def approve_dry_run_ingestion(req: IngestionRequest):
+    chdb_client.init_schema()
+    chdb_client.init_base_context()
+    result = ingestion_flow.run(
+        spec_id=req.spec_id,
+        table_name=req.table_name,
+        input_fn=lambda _: "APPROVE",
+        dry_run=True,
+    )
+    return {
+        "status": "success",
+        "spec_id": req.spec_id,
+        "table_name": result.get("table_name") or req.table_name,
+        "dry_run": True,
+        "approved": True,
+        "message": f"Human-in-the-Loop review confirmed and approved for dry-run proposal '{result.get('table_name')}'.",
+        "diff_result": result.get("diff_result", {}),
         "trace_id": result.get("trace_id", ""),
     }
 
@@ -351,20 +378,38 @@ _INGESTION_HTML = """<!DOCTYPE html>
           🛡️ Run Dry Run (Generate Proposal)
         </button>
 
-        <button class="btn btn-success" id="deployBtn" onclick="runApproveDeploy()" style="display:none;">
-          🚀 Approve & Deploy to Cloud
-        </button>
+        <div id="hitlBox" style="display:none; margin-top: 1rem; padding: 0.85rem; background: rgba(30, 41, 59, 0.7); border: 1px solid #3B82F6; border-radius: 8px;">
+          <div style="font-size: 0.85rem; font-weight: 600; color: #93C5FD; margin-bottom: 0.5rem;">
+            🛑 Human-in-the-Loop (HITL) Gate
+          </div>
+          <button class="btn btn-secondary" id="approveDryRunBtn" onclick="runApproveDryRun()" style="margin-bottom: 0.5rem; background: #2563EB;">
+            ✅ Acknowledge & Approve Dry-Run (HITL Review)
+          </button>
+          <button class="btn btn-success" id="deployBtn" onclick="runApproveDeploy()" style="margin-bottom: 0;">
+            🚀 Approve & Deploy to ClickHouse Cloud
+          </button>
+        </div>
 
-        <div style="margin-top: 1.5rem; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
-          <strong>Safety Guarantee:</strong> "Run Dry Run" executes purely in non-mutating mode without modifying ClickHouse Cloud or chDB. "Deploy" requires explicit confirmation.
+        <div style="margin-top: 1.25rem; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
+          <strong>HITL Safety Guarantee:</strong> Both Dry-Run Review and Live Deployment require explicit operator approval. Dry-Run never mutates ClickHouse Cloud or chDB.
         </div>
       </div>
 
       <!-- Right Panel: Output & Inspector -->
       <div class="card">
-        <div id="statusAlert" class="alert alert-info">Select a feature spec and click <strong>Generate Proposal (Dry Run)</strong> to inspect inferred DDL.</div>
+        <div id="statusAlert" class="alert alert-info">Select a feature spec and click <strong>Generate Proposal (Dry Run)</strong> to inspect inferred DDL and architectural reasoning.</div>
 
         <div id="resultsContainer" style="display: none;">
+          <div class="section-box" id="reasoningBox" style="display: none; background: rgba(30, 41, 59, 0.7); border-left: 3px solid #3B82F6; padding: 1rem; border-radius: 8px; margin-bottom: 1.25rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 0.5rem; color: #93C5FD;">🧠 Instrumentation Engineer Architectural Decision & Rationale</h3>
+            <div id="consultationBanner" style="font-size: 0.85rem; color: #E2E8F0; margin-bottom: 0.5rem;"></div>
+            <div id="executiveSummary" style="font-size: 0.85rem; color: #93C5FD; background: rgba(15, 23, 42, 0.6); padding: 0.65rem 0.85rem; border-radius: 6px; margin-bottom: 0.6rem; border-left: 2px solid #60A5FA;"></div>
+            <details open style="cursor: pointer;">
+              <summary style="font-size: 0.85rem; font-weight: 600; color: #60A5FA; user-select: none;">🔍 6-Pillar Technical Deep Dive & Storage Mechanics</summary>
+              <div id="reasoningDetails" style="margin-top: 0.5rem; font-size: 0.82rem; color: #CBD5E1; line-height: 1.5; white-space: pre-wrap; background: rgba(15, 23, 42, 0.8); padding: 0.75rem; border-radius: 6px;"></div>
+            </details>
+          </div>
+
           <div class="section-box">
             <h3 style="font-size: 0.95rem; margin-bottom: 0.4rem; color: #94A3B8;">Proposed ClickHouse Table DDL</h3>
             <pre id="ddlOutput"></pre>
@@ -373,16 +418,6 @@ _INGESTION_HTML = """<!DOCTYPE html>
           <div class="section-box" id="mvBox" style="display: none;">
             <h3 style="font-size: 0.95rem; margin-bottom: 0.4rem; color: #94A3B8;">Proposed Materialized View (SummingMergeTree)</h3>
             <pre id="mvOutput"></pre>
-          </div>
-
-          <div class="section-box" id="reasoningBox" style="display: none; background: rgba(30, 41, 59, 0.7); border-left: 3px solid #3B82F6;">
-            <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: #93C5FD;">🧠 Instrumentation Engineer Rationale</h3>
-            <div id="consultationBanner" style="font-size: 0.85rem; color: #E2E8F0; margin-bottom: 0.5rem;"></div>
-            <div id="executiveSummary" style="font-size: 0.85rem; color: #93C5FD; background: rgba(15, 23, 42, 0.6); padding: 0.65rem 0.85rem; border-radius: 6px; margin-bottom: 0.6rem; border-left: 2px solid #60A5FA;"></div>
-            <details style="cursor: pointer;">
-              <summary style="font-size: 0.85rem; font-weight: 600; color: #60A5FA; user-select: none;">🔍 View Technical Deep Dive & Storage Mechanics</summary>
-              <div id="reasoningDetails" style="margin-top: 0.5rem; font-size: 0.82rem; color: #CBD5E1; line-height: 1.5; white-space: pre-wrap; background: rgba(15, 23, 42, 0.8); padding: 0.75rem; border-radius: 6px;"></div>
-            </details>
           </div>
 
           <div class="section-box">
@@ -439,7 +474,7 @@ _INGESTION_HTML = """<!DOCTYPE html>
       const table_name = custom_table || document.getElementById('inferredBadge').textContent;
       const btn = document.getElementById('dryRunBtn');
       const alertBox = document.getElementById('statusAlert');
-      const deployBtn = document.getElementById('deployBtn');
+      const hitlBox = document.getElementById('hitlBox');
 
       btn.innerHTML = '<span class="spinner"></span> Generating Proposal...';
       btn.disabled = true;
@@ -465,13 +500,13 @@ _INGESTION_HTML = """<!DOCTYPE html>
         if (data.reasoning && (data.reasoning.high_level_summary || data.reasoning.table_strategy)) {
           document.getElementById('reasoningBox').style.display = 'block';
           const consult = data.table_consultation || {};
-          document.getElementById('consultationBanner').innerHTML = `<strong>Consultation Strategy:</strong> <code>${consult.strategy || 'CREATE_NEW'}</code><br><span style="color:#94A3B8;">${consult.recommendation || ''}</span>`;
-          document.getElementById('executiveSummary').innerHTML = `<strong>High-Level Summary:</strong> ${data.reasoning.high_level_summary || data.reasoning.table_strategy || ''}`;
+          document.getElementById('consultationBanner').innerHTML = `<strong>Table Consultation Strategy:</strong> <code>${consult.strategy || 'CREATE_NEW'}</code><br><span style="color:#94A3B8;">${consult.recommendation || ''}</span>`;
+          document.getElementById('executiveSummary').innerHTML = `<strong>Executive Summary:</strong> ${data.reasoning.high_level_summary || data.reasoning.table_strategy || ''}`;
           
           let deepText = '';
           if (data.reasoning.technical_deep_dive) {
             const d = data.reasoning.technical_deep_dive;
-            deepText = `• Sorting Key (ORDER BY):\n  ${d.ordering_mechanics}\n\n• Partitioning Strategy:\n  ${d.partitioning_mechanics}\n\n• Encodings & Compression:\n  ${d.column_encodings_and_compression}\n\n• Pre-Aggregation Rollup:\n  ${d.materialized_view_rollup}\n\n• Lifecycle Retention (TTL):\n  ${d.lifecycle_retention}`;
+            deepText = `1. Table Strategy Decision:\n   ${d.table_strategy}\n\n2. Sorting Key (ORDER BY):\n   ${d.ordering_mechanics}\n\n3. Partitioning Strategy (PARTITION BY):\n   ${d.partitioning_mechanics}\n\n4. Encodings & Compression:\n   ${d.column_encodings_and_compression}\n\n5. Materialized View Rollup:\n   ${d.materialized_view_rollup}\n\n6. Data Lifecycle Retention (TTL):\n   ${d.lifecycle_retention}`;
           } else {
             deepText = data.reasoning.full_markdown || JSON.stringify(data.reasoning, null, 2);
           }
@@ -492,13 +527,41 @@ _INGESTION_HTML = """<!DOCTYPE html>
         });
 
         alertBox.className = 'alert alert-info';
-        alertBox.innerHTML = `<strong>Proposal Ready for Review:</strong> Proposed DDL and Materialized View generated in Dry-Run mode. Review above and click <strong>Approve & Deploy</strong> when ready.`;
-        deployBtn.style.display = 'block';
+        alertBox.innerHTML = `<strong>Proposal Ready for HITL Review:</strong> Review the Instrumentation Engineer rationale and proposed DDL above. Use the HITL gate buttons to approve dry-run or deploy live.`;
+        hitlBox.style.display = 'block';
       } catch (err) {
         alertBox.className = 'alert alert-info';
         alertBox.textContent = 'Error: ' + err.message;
       } finally {
-        btn.innerHTML = 'Generate Proposal (Dry Run)';
+        btn.innerHTML = '🛡️ Run Dry Run (Generate Proposal)';
+        btn.disabled = false;
+      }
+    }
+
+    async function runApproveDryRun() {
+      const spec_id = document.getElementById('specSelect').value;
+      const custom_table = document.getElementById('tableName').value.trim();
+      const table_name = custom_table || document.getElementById('inferredBadge').textContent;
+      const btn = document.getElementById('approveDryRunBtn');
+      const alertBox = document.getElementById('statusAlert');
+
+      btn.innerHTML = '<span class="spinner"></span> Confirming Review...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/ingest/approve-dry-run', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({spec_id, table_name})
+        });
+        const data = await res.json();
+        alertBox.className = 'alert alert-success';
+        alertBox.innerHTML = `✅ <strong>Dry-Run Review Approved!</strong> Operator confirmed review of proposal for table <code>${table_name}</code>. Trace recorded. ClickHouse Cloud and chDB remain untouched.`;
+      } catch (err) {
+        alertBox.className = 'alert alert-info';
+        alertBox.textContent = 'Dry-run confirmation error: ' + err.message;
+      } finally {
+        btn.innerHTML = '✅ Acknowledge & Approve Dry-Run (HITL Review)';
         btn.disabled = false;
       }
     }
@@ -533,7 +596,7 @@ _INGESTION_HTML = """<!DOCTYPE html>
         alertBox.className = 'alert alert-info';
         alertBox.textContent = 'Deployment error: ' + err.message;
       } finally {
-        deployBtn.innerHTML = 'Approve & Deploy to Cloud';
+        deployBtn.innerHTML = '🚀 Approve & Deploy to ClickHouse Cloud';
         deployBtn.disabled = false;
       }
     }

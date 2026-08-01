@@ -351,12 +351,31 @@ def _render_cuj1_ingestion(available_specs: list[str]):
                 if diff.get("gaps"):
                     st.warning(f"Undocumented Gaps: {diff.get('gaps')}")
 
-            # 5. HITL Gate (Live Mode)
-            if not is_dry_run:
-                st.divider()
-                st.subheader("3. Human-in-the-Loop (HITL) Gate")
+            # 5. HITL Gate (Live Mode & Dry-Run Mode)
+            st.divider()
+            st.subheader("3. Human-in-the-Loop (HITL) Gate")
+            if is_dry_run:
+                confirm_dry = st.checkbox(f"I have reviewed and approve this dry-run schema proposal and architectural rationale for `{resolved_table}`.")
+                if st.button("✅ Confirm & Approve Dry-Run Review (HITL Gate)", type="primary", disabled=not confirm_dry, width="stretch"):
+                    with st.spinner("Recording operator dry-run review and tracing to Langfuse..."):
+                        try:
+                            result = ingestion_flow.run(
+                                spec_id=selected_spec,
+                                table_name=resolved_table,
+                                input_fn=lambda _: "APPROVE",
+                                dry_run=True,
+                            )
+                        except TypeError:
+                            result = ingestion_flow.run(
+                                spec_id=selected_spec,
+                                table_name=resolved_table,
+                                input_fn=lambda _: "APPROVE",
+                            )
+                        st.balloons()
+                        st.success(f"✅ Operator review confirmed for dry-run proposal `{resolved_table}`! Trace recorded. ClickHouse Cloud and chDB remain untouched.")
+                st.caption("🔒 *Dry-Run Mode: Generates and validates proposals with full HITL operator review without mutating ClickHouse Cloud or chDB.*")
+            else:
                 confirm = st.checkbox(f"I authorize executing this DDL on ClickHouse Cloud table `{resolved_table}`.")
-
                 if st.button("🚀 Approve & Deploy to ClickHouse Cloud", type="secondary", disabled=not confirm, width="stretch"):
                     with st.spinner("Executing DDL on ClickHouse Cloud and recording version..."):
                         try:
@@ -377,8 +396,6 @@ def _render_cuj1_ingestion(available_specs: list[str]):
                             st.success(f"🎉 Successfully deployed `{resolved_table}` to ClickHouse Cloud and registered version in `chDB.schema_registry`!")
                         else:
                             st.error(f"Deployment rejected or failed: {result}")
-            else:
-                st.caption("🔒 *Dry-Run Active: ClickHouse Cloud and chDB were not modified.*")
 
 
 def _render_cuj2_investigation(available_specs: list[str]):

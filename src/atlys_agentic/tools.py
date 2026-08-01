@@ -280,12 +280,13 @@ def Tool_Explain_Schema_Rationale(
     consultation: dict,
     spec_text: str = "",
 ) -> dict:
-    """Generate high-level executive summary and foldable technical deep dive for the suggested schema."""
+    """Generate high-level executive summary and detailed 6-pillar technical deep dive for the suggested schema."""
     cols = _columns_from_ddl(ddl)
     low_card_cols = [line.split()[0] for line in ddl.splitlines() if "LowCardinality" in line]
     nullable_cols = [line.split()[0] for line in ddl.splitlines() if "Nullable" in line]
     uint8_cols = [line.split()[0] for line in ddl.splitlines() if "UInt8" in line]
 
+    strategy = consultation.get("strategy", "CREATE_NEW")
     strategy_desc = consultation.get("recommendation", f"Dedicated table created for {table_name}.")
 
     # 1. High-Level Executive Summary
@@ -297,6 +298,13 @@ def Tool_Explain_Schema_Rationale(
     )
 
     # 2. Deep Dive Sections
+    table_strategy_reasoning = (
+        f"Architecture Strategy: {strategy}.\n"
+        f"{strategy_desc}\n"
+        f"Decision Basis: Dedicated table isolates storage TTL, partition directories, and merge lifecycles, "
+        f"preventing high-volume ingestion lock contention with unrelated feature streams."
+    )
+
     ordering_reasoning = (
         "ORDER BY (timestamp, user_id): Orders records chronologically with high temporal locality, "
         "enabling fast index pruning for time-range queries and efficient user funnel analysis. "
@@ -326,7 +334,7 @@ def Tool_Explain_Schema_Rationale(
     retention_reasoning = "TTL timestamp + INTERVAL 12 MONTH: Automatically purges data older than 12 months in background merges for rolling GDPR compliance and cloud storage cost optimization."
 
     technical_deep_dive = {
-        "table_strategy": strategy_desc,
+        "table_strategy": table_strategy_reasoning,
         "ordering_mechanics": ordering_reasoning,
         "partitioning_mechanics": partitioning_reasoning,
         "column_encodings_and_compression": types_reasoning,
@@ -336,12 +344,12 @@ def Tool_Explain_Schema_Rationale(
 
     # 3. Foldable Full Markdown (Foldable <details> section)
     full_markdown = (
-        f"### 🧠 Instrumentation Engineer Summary\n\n"
+        f"### 🧠 Instrumentation Engineer Architectural Decision & Rationale\n\n"
         f"> **Executive Summary:** {high_level_summary}\n\n"
         f"<details>\n"
         f"<summary><b>🔍 Technical Deep Dive & Storage Mechanics (Click to expand)</b></summary>\n\n"
         f"1. **Internal Table Consultation & Decision:**\n"
-        f"   - {strategy_desc}\n\n"
+        f"   - {table_strategy_reasoning}\n\n"
         f"2. **Primary Sorting Key (`ORDER BY`):**\n"
         f"   - {ordering_reasoning}\n\n"
         f"3. **Partitioning Strategy (`PARTITION BY`):**\n"

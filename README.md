@@ -79,39 +79,142 @@ pytest tests/test_e2e_rehearsal.py -v
 
 ## 3. Actual Pipeline Execution
 
-### CUJ 1: Ingestion Pipeline (Web UI & CLI)
+### CUJ 1: Ingestion Pipeline (Human-in-the-Loop Gated)
 
-#### 1. Visual Web Portal (FastAPI & Streamlit)
+CUJ 1 automates schema inference from product feature specs (`spec.md`) and raw event streams (`events.ndjson`), but enforces a **strict Human-in-the-Loop (HITL) gate**: **human review and authorization is required across all surfaces, even in dry-run mode, and no DDL statement ever executes on ClickHouse Cloud without explicit human confirmation.**
+
+#### Human-in-the-Loop (HITL) Gate Architecture
+```
+Feature Spec (`spec.md`) + Events (`events.ndjson`)
+                     │
+                     ▼
+  [Instrumentation Engineer Agent]
+  - Formulates 6-Pillar Architectural Decision & Rationale:
+    1. Table Strategy: Registry consultation (CREATE_NEW vs REUSE vs ALTER)
+    2. Primary Sorting Key: ORDER BY (timestamp, user_id) [Never leading UUID]
+    3. Partitioning: PARTITION BY toYYYYMM(timestamp) [Monthly part control]
+    4. Encodings: LowCardinality(String), Nullable(...), UInt8 booleans
+    5. Materialized View: SummingMergeTree daily segment rollup
+    6. Lifecycle Retention: TTL timestamp + INTERVAL 12 MONTH (GDPR)
+                     │
+                     ▼
+  [Context Librarian Agent]
+  - Audits Schema against chDB.business_context (Detects Gaps & Conflicts)
+                     │
+                     ▼
+  ═══════════════════════════════════════════════════════════
+  🛑 HUMAN-IN-THE-LOOP (HITL) APPROVAL GATE (Live & Dry Run)
+  ═══════════════════════════════════════════════════════════
+  Operator inspects Proposed DDL, MVs, 6-Pillar Rationale & Context Diff
+            │                                  │
+     [Type "APPROVE"]                    [Any other input]
+            │                                  │
+            ▼                                  ▼
+   ✅ APPROVED REVIEW / DEPLOY         ❌ ABORT / REJECTED
+   - Live Mode: Executes on Cloud      - Live Mode: Cloud Untouched
+   - Dry Run Mode: Validates & Logs    - Dry Run: Aborts Review
+   - Trace Recorded to Langfuse        - Trace Logged as Rejected
+```
+
+---
+
+#### 1. Instrumentation Engineer 6-Pillar Decision Rationale
+
+Before any operator approval is requested, the **Instrumentation Engineer** synthesizes a rigorous architectural decision breakdown covering six foundational database pillars:
+
+| Pillar | Architecture Decision | Engineering Rationale & Tradeoff |
+| :--- | :--- | :--- |
+| **1. Table Strategy** | `CREATE_NEW`, `REUSE_EXISTING`, or `ALTER_EXISTING` | Consults `chDB.schema_registry` and ClickHouse Cloud. If schema exists, reuses or proposes non-breaking `ALTER TABLE ADD COLUMN`. If distinct domain, creates a dedicated table to isolate partition directories, TTL lifecycles, and ingestion locks. |
+| **2. Primary Key (`ORDER BY`)** | `(timestamp, user_id)` | Enforces dense primary index locality (1 mark / 8192 rows) for fast range pruning and funnel cohort analysis. **Strict Guardrail**: High-cardinality IDs (`id`, `event_id`, UUIDs) are **never** placed in leading position, avoiding sparse index bloat. |
+| **3. Partitioning (`PARTITION BY`)** | `toYYYYMM(timestamp)` | Organizes data into monthly parts. Prevents part churn ("Too many parts" error) while allowing ClickHouse to skip entire monthly parts during analytical cuts and drop cold months cleanly. |
+| **4. Encodings & Types** | `LowCardinality`, `Nullable`, `UInt8` | Applies `LowCardinality(String)` to bounded categorical strings (`device_type`, `os`, `country`, `payment_method`) for 5–10× dictionary compression and SIMD cache execution. Wraps sparse keys in `Nullable(...)` and booleans in `UInt8` (1 byte). |
+| **5. Rollup MV** | `SummingMergeTree` (`{table}_daily_mv`) | Automatically pre-aggregates event volume and unique users along segment dimensions at write time, eliminating full-table raw scans for Product Analysts during common cuts. |
+| **6. Retention (TTL)** | `TTL timestamp + INTERVAL 12 MONTH` | Enforces automated data lifecycle purging in background merges for GDPR compliance and cold storage cost optimization. |
+
+---
+
+#### 2. Command-Line Interface (CLI with HITL Gate)
+
+##### Live Interactive Mode (HITL Deployment Gate)
+The CLI prints the full 6-pillar decision breakdown, DDL, MV, and Context Diff Audit, then prompts the operator:
+```bash
+python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/01_express_checkout" --table express_checkout
+```
+Terminal prompt:
+```text
+================================================================================
+🧠 INSTRUMENTATION ENGINEER ARCHITECTURAL DECISION & RATIONALE
+================================================================================
+• Target Table: express_checkout
+• Executive Summary: Proposes dedicated table express_checkout ordered by (timestamp, user_id)...
+--- 1. Table Strategy Decision ---
+  Strategy: CREATE_NEW
+  Recommendation: Consulted internal schema registry. Dedicated table created.
+--- 2. Primary Sorting Key (ORDER BY) ---
+  ORDER BY (timestamp, user_id): Orders records chronologically with high temporal locality...
+--- 3. Partitioning Strategy (PARTITION BY) ---
+  PARTITION BY toYYYYMM(timestamp): Organizes data into monthly directory partitions...
+--- 4. Encodings & Data Types ---
+  Applied LowCardinality(String) to 4 bounded categorical columns...
+--- 5. Materialized View Rollup ---
+  Materialized View (express_checkout_daily_mv): Uses SummingMergeTree...
+--- 6. Data Lifecycle Retention (TTL) ---
+  TTL timestamp + INTERVAL 12 MONTH: Automatically purges data older than 12 months...
+
+--- Proposed ClickHouse DDL ---
+CREATE TABLE IF NOT EXISTS express_checkout (...) ENGINE = MergeTree() ...
+
+--- Proposed Materialized View (SummingMergeTree) ---
+CREATE MATERIALIZED VIEW IF NOT EXISTS express_checkout_daily_mv ...
+
+--- Context Diff Audit (Context Librarian) ---
+  • New Attributes to Sync (4): express_checkout.device_type, ...
+================================================================================
+
+[LIVE DEPLOYMENT MODE]
+Type APPROVE to execute on ClickHouse Cloud: 
+```
+- **Approved (`APPROVE`)**: Applies DDL to ClickHouse Cloud, records schema snapshot in `chDB.schema_registry`, and synchronizes new columns with `chDB.business_context`.
+- **Rejected (Any other input)**: Aborts immediately (`human_gate_rejected` trace). Cloud and chDB remain untouched.
+
+##### Dry-Run Mode (HITL Proposal Review Gate)
+In Dry-Run mode, the CLI prints the full 6-pillar architectural decision breakdown and **prompts the human operator to confirm review of the proposal**:
+```bash
+python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/01_express_checkout" --table express_checkout --dry-run
+```
+Terminal prompt:
+```text
+[DRY RUN MODE — Non-Mutating Proposal Review]
+Type APPROVE to confirm proposal review (or press Enter/reject to abort): 
+```
+- **Approved (`APPROVE`)**: Confirms and logs operator review in Langfuse (`human_gate_dry_run` trace). ClickHouse Cloud and `chDB` remain untouched.
+- **Rejected**: Logs operator rejection.
+
+---
+
+#### 3. Visual Web Portals (HITL Web Interfaces)
 
 ##### Option A: Built-in FastAPI Web Dashboard
-Start the platform server and open **`http://localhost:8008/ui/ingestion`** (or `http://localhost:8008/`):
+Start the platform backend and open **`http://localhost:8008/ui/ingestion`** (or `http://localhost:8008/`):
 ```bash
 uvicorn atlys_agentic.run_chat:app --host 0.0.0.0 --port 8008 --reload
 ```
-- **Feature Spec Selector**: Choose any spec (`01_express_checkout`, `02_group_family`, etc.) with automatic table name resolution.
-- **Generate Proposal (Dry Run)**: Generates ClickHouse DDL, Materialized View, and Context Diff Audit with zero cloud or chDB mutation.
-- **Approve & Deploy**: One-click confirmation gate to deploy to ClickHouse Cloud and record versioned snapshots in `schema_registry`.
+1. **Feature Spec Selector**: Choose any spec (`01_express_checkout`, `02_group_family`, etc.) with automatic table name inference.
+2. **Phase 1 — Run Dry Run (Generate Proposal & Reasoning)**: Inspect proposed ClickHouse DDL, SummingMergeTree MV, Context Diff Audit, and the expandable **6-Pillar Technical Deep Dive** card.
+3. **Phase 2 — HITL Review & Approval Gates**:
+   - **`✅ Acknowledge & Approve Dry-Run (HITL Review)`**: Confirms and logs human operator review of the dry-run proposal.
+   - **`🚀 Approve & Deploy to ClickHouse Cloud`**: Deploys the approved schema to ClickHouse Cloud with confirmation gate.
 
 ##### Option B: Streamlit Ingestion Portal
+Launch the Streamlit portal:
 ```bash
 streamlit run src/atlys_agentic/ui_ingestion.py
 # or via entrypoint:
 atlys-ui
 ```
-
-#### 2. Command-Line Interface (CLI)
-
-```bash
-# Interactive Mode (Prompts for 'APPROVE' before applying to ClickHouse Cloud)
-python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/01_express_checkout" --table express_checkout
-
-# Dry Run Mode (Generates DDL, MVs, and context diff audit without modifying Cloud or chDB)
-python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/01_express_checkout" --table express_checkout --dry-run
-```
-
-#### Dry-Run Mode vs. Interactive Mode
-- **`--dry-run`**: Analyzes the spec and event stream, generates the optimal DDL & Materialized View, audits table columns against `business_context` for contradictions and gaps, and prints the proposed plan without prompting or mutating ClickHouse Cloud / `chDB`.
-- **Interactive Execution**: Prints the proposed DDL and prompts operator `Type APPROVE to execute on ClickHouse Cloud: `. On approval, applies DDL to ClickHouse Cloud, records snapshots in `schema_registry`, and synchronizes new columns with `business_context` and `context_changelog`.
+- **Dry-Run Review Gate**: Checkbox `[x] I have reviewed and approve this dry-run schema proposal and architectural rationale` unlocks the **`✅ Confirm & Approve Dry-Run Review`** action.
+- **Live Deployment Gate**: Checkbox `[x] I authorize executing this DDL on ClickHouse Cloud table` unlocks the **`🚀 Approve & Deploy to ClickHouse Cloud`** action.
+- **Sidebar Registry Tools**: **`🧹 Clear Schemas`** and **`🔄 Reset chDB`**.
 
 ---
 
@@ -119,12 +222,50 @@ python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/01_expr
 
 The Analyst interface runs as an OpenAI-compatible HTTP service that can be queried via curl, Python, or connected directly to LibreChat.
 
-#### 1. Start the Chat Backend
+---
+
+#### 1. How to Up the Backend Service
+
+The unified FastAPI backend (`src/atlys_agentic/run_chat.py`) serves both the **CUJ 1 Web Ingestion Portal** and the **CUJ 2 OpenAI-Compatible Chat API** for LibreChat.
+
+##### Option A: Uvicorn (Recommended for Development)
 ```bash
 uvicorn atlys_agentic.run_chat:app --host 0.0.0.0 --port 8008 --reload
 ```
 
-#### 2. Test via curl
+##### Option B: Python Module
+```bash
+python -m atlys_agentic.run_chat
+```
+
+##### Option C: Package CLI Entrypoint
+```bash
+atlys-chat
+```
+
+##### Verify Backend Health
+Ensure the backend is up and responding:
+```bash
+curl http://localhost:8008/healthz
+# Expected response: {"status":"ok"}
+```
+
+##### Backend Service Endpoints
+| Endpoint | Method | Purpose |
+| :--- | :--- | :--- |
+| `http://localhost:8008/` or `/ui/ingestion` | `GET` | Interactive Web Portal for CUJ 1 Schema Ingestion & HITL approval |
+| `http://localhost:8008/v1/chat/completions` | `POST` | OpenAI-compatible endpoint used by LibreChat and curl |
+| `http://localhost:8008/healthz` | `GET` | Service liveness healthcheck |
+| `http://localhost:8008/api/specs` | `GET` | Lists available feature specifications |
+| `http://localhost:8008/api/ingest/propose` | `POST` | Generates DDL & context diff proposals (Dry-run) |
+| `http://localhost:8008/api/ingest/approve` | `POST` | Deploys schema to ClickHouse Cloud & updates `chDB` registry |
+| `http://localhost:8008/api/analyze/query` | `POST` | Programmatic analyst query execution |
+
+> ⚠️ **Important**: The backend service **must be running on host port 8008** before sending queries from LibreChat, as LibreChat's Docker container forwards requests to `http://host.docker.internal:8008/v1`.
+
+---
+
+#### 2. Test Backend via curl
 ```bash
 curl -X POST http://localhost:8008/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -143,6 +284,8 @@ curl -X POST http://localhost:8008/v1/chat/completions \
 4. **Confidence Scoring**: Computes deterministic confidence score $f(N, \Delta, \text{match}, \text{cuts}) \in [0, 1]$.
 5. **Synthesis**: Produces a structured PM markdown report, logs the insight into `chDB.insights`, and returns the OpenAI-formatted payload with Langfuse trace ID.
 
+---
+
 #### 3. Run Programmatically via Python
 ```python
 from atlys_agentic.flows import analysis_flow
@@ -160,12 +303,47 @@ print("Known issue matched:", result["known_issue_match"])
 print("Multi-cut dimensions:", list(result["cuts"].keys()))
 ```
 
-#### 4. Connect to LibreChat (UI)
-Start the pre-configured LibreChat container:
+---
+
+#### 4. Connect to LibreChat (Web UI)
+
+A pre-configured LibreChat stack with custom OpenAI-compatible endpoint settings is included in `src/atlys_agentic/librechat/`.
+
+##### Step 1: Start the LibreChat Stack
+Make sure the backend service is running on port `8008`, then launch LibreChat and MongoDB with Docker Compose:
 ```bash
 docker compose -f src/atlys_agentic/librechat/docker-compose.librechat.yml up -d
 ```
-Open `http://localhost:3080` in your browser and select the **Atlys Analyst** model endpoint.
+
+##### Step 2: Open LibreChat in Your Browser
+- **LibreChat Web UI URL**: **`http://localhost:3080`**
+
+##### Step 3: User Credentials & Registration
+- **First-Time User Registration**:
+  - Registration is enabled (`ALLOW_REGISTRATION=true`) and email verification is disabled (`CHECK_EMAIL_VERIFICATION=false`).
+  - Click **Sign up** on the login screen.
+  - Enter your details:
+    - **Email**: Any email (e.g. `admin@atlys.com` or your personal email)
+    - **Display Name**: `Atlys Admin` (or your name)
+    - **Password**: Any password of your choice (e.g. `admin1234`)
+  - Click **Sign up** and you will be immediately logged into LibreChat.
+- **Subsequent Logins**:
+  - Simply log in with the email and password you created during sign up.
+
+##### Step 4: Select the Atlys Analyst Model
+1. In the model dropdown at the top-left of the LibreChat chat interface, select **`Atlys Analyst`** (displays as *Atlys Product Analyst* / `atlys-analyst`).
+2. **API Key / Credentials**:
+   - Pre-configured in `src/atlys_agentic/librechat/librechat.yaml`:
+     - **Base URL**: `http://host.docker.internal:8008/v1`
+     - **API Key**: `dummy-key-not-checked` (pre-loaded; you will **not** be prompted to enter an OpenAI API key).
+3. Ask analytical questions (e.g. *"Is there an iOS OTP drop on Express Checkout?"* or *"Analyze purchase conversion across destination countries"*).
+4. The response will stream the synthesized PM report, confidence score, and Langfuse trace link.
+
+##### Step 5: Stopping LibreChat
+To stop the containers:
+```bash
+docker compose -f src/atlys_agentic/librechat/docker-compose.librechat.yml down
+```
 
 ---
 
