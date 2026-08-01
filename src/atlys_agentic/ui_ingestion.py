@@ -129,10 +129,14 @@ def render_app():
         st.warning(f"No specs found in {paths.SPECS_DIR}")
         return
 
-    # Workflow Switcher (CUJ 1 vs CUJ 2)
+    # Workflow Switcher (CUJ 1 vs CUJ 2 vs chDB Explorer)
     workflow = st.radio(
         "Workflow",
-        ["⚡ CUJ 1: Ingestion & Schema Consultation", "🔍 CUJ 2: Root-Cause & Analytics Investigation"],
+        [
+            "⚡ CUJ 1: Ingestion & Schema Consultation",
+            "🔍 CUJ 2: Root-Cause & Analytics Investigation",
+            "🗄️ chDB Explorer: Real-Time Tables & Live SQL",
+        ],
         index=0,
         horizontal=True,
     )
@@ -140,8 +144,10 @@ def render_app():
 
     if "CUJ 1" in workflow:
         _render_cuj1_ingestion(available_specs)
-    else:
+    elif "CUJ 2" in workflow:
         _render_cuj2_investigation(available_specs)
+    else:
+        _render_chdb_explorer()
 
 
 def _render_cuj1_ingestion(available_specs: list[str]):
@@ -516,6 +522,112 @@ def _render_cuj2_investigation(available_specs: list[str]):
                             st.markdown(f"**Query {idx}:**")
                             st.code(q, language="sql")
                     st.caption(f"Trace ID: `{res.get('trace_id')}`")
+
+
+def _render_chdb_explorer():
+    import streamlit as st
+    import pandas as pd
+    from atlys_agentic import chdb_client
+
+    st.subheader("🗄️ Real-Time chDB Metadata & Table Explorer")
+    st.caption("Inspect live ClickHouse / SQLite tables, schema definitions, audit changelogs, and run ad-hoc queries in real time.")
+
+    # 1. Initialize & Discover Active Tables
+    chdb_client.init_schema()
+    chdb_client.init_base_context()
+
+    try:
+        raw_tables = chdb_client.run("SHOW TABLES")
+        table_names = [t.get("name") for t in raw_tables if isinstance(t, dict) and t.get("name")]
+    except Exception:
+        table_names = ["business_context", "schema_registry", "context_changelog", "insights"]
+
+    if not table_names:
+        table_names = ["business_context", "schema_registry", "context_changelog", "insights"]
+
+    # Table Counts KPI Cards
+    counts = {}
+    for tbl in ["business_context", "schema_registry", "context_changelog", "insights"]:
+        try:
+            r = chdb_client.run(f'SELECT count() AS c FROM "{tbl}"')
+            counts[tbl] = r[0].get("c", 0) if r else 0
+        except Exception:
+            counts[tbl] = 0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("📚 Business Context", f"{counts.get('business_context', 0)} rules")
+    c2.metric("📋 Schema Registry", f"{counts.get('schema_registry', 0)} tables")
+    c3.metric("📜 Context Changelog", f"{counts.get('context_changelog', 0)} events")
+    c4.metric("💡 Stored Insights", f"{counts.get('insights', 0)} insights")
+
+    st.markdown("---")
+
+    # 2. Explorer Tabs
+    tab_browser, tab_sql = st.tabs(["📊 Interactive Table Browser", "⚡ Live SQL Query Console"])
+
+    with tab_browser:
+        col_sel, col_act = st.columns([3, 1])
+        with col_sel:
+            selected_table = st.selectbox("Select chDB Table to Inspect", table_names, index=0)
+        with col_act:
+            st.write("")
+            refresh_btn = st.button("🔄 Refresh Data", use_container_width=True)
+
+        if selected_table:
+            try:
+                rows = chdb_client.run(f'SELECT * FROM "{selected_table}" LIMIT 100')
+                if rows:
+                    df = pd.DataFrame(rows)
+                    st.markdown(f"**Viewing `{selected_table}` ({len(df)} rows displayed):**")
+                    st.dataframe(df, use_container_width=True)
+
+                    # Detail view for selected table entries
+                    if selected_table in ("business_context", "insights"):
+                        with st.expander("🔍 Expanded Entry Inspector", expanded=False):
+                            row_keys = [f"{r.get('key', idx)}" for idx, r in enumerate(rows)]
+                            selected_key = st.selectbox("Select Key to Inspect Full Text", row_keys)
+                            matched = next((r for r in rows if str(r.get("key")) == selected_key), None)
+                            if matched:
+                                st.markdown(f"**Section:** `{matched.get('section', 'General')}` | **Agent:** `{matched.get('agent', 'System')}`")
+                                st.markdown(matched.get("definition", ""))
+                else:
+                    st.info(f"Table `{selected_table}` is currently empty (0 rows).")
+            except Exception as e:
+                st.error(f"Error querying table `{selected_table}`: {e}")
+
+    with tab_sql:
+        st.markdown("**Run Ad-Hoc ClickHouse / SQLite SQL Queries against chDB:**")
+
+        sql_presets = {
+            "1. 🔍 Known Issues (K1 - K7)": "SELECT key, section, definition FROM business_context WHERE key LIKE 'K%' OR section LIKE '%Known-issues%'",
+            "2. 📋 Schema Registry Versions": 'SELECT "table", spec_id, version, ddl, registered_at FROM schema_registry ORDER BY registered_at DESC',
+            "3. 📜 Context Changelog Audit Trail": "SELECT key, section, old_val, new_val, agent, mutated_at, trace_id FROM context_changelog ORDER BY mutated_at DESC LIMIT 20",
+            "4. 💡 Stored Insights": "SELECT key, section, definition, agent, created_at FROM insights ORDER BY created_at DESC LIMIT 10",
+            "5. 📊 Business Rules Summary": "SELECT section, count() AS entries FROM business_context GROUP BY section ORDER BY entries DESC",
+            "6. ✏️ Custom SQL Query": "SELECT * FROM business_context LIMIT 10",
+        }
+
+        chosen_preset = st.selectbox("Query Templates", list(sql_presets.keys()), index=0)
+        default_query = sql_presets[chosen_preset]
+
+        query_sql = st.text_area("SQL Query", value=default_query, height=100)
+        run_query_btn = st.button("▶️ Execute SQL Query", type="primary")
+
+        if run_query_btn or "last_explorer_sql" in st.session_state:
+            if run_query_btn:
+                st.session_state["last_explorer_sql"] = query_sql
+
+            active_sql = st.session_state.get("last_explorer_sql", query_sql)
+            try:
+                query_res = chdb_client.run(active_sql)
+                if query_res:
+                    df_res = pd.DataFrame(query_res)
+                    st.success(f"Query returned **{len(df_res)} rows** successfully.")
+                    st.dataframe(df_res, use_container_width=True)
+                else:
+                    st.info("Query executed successfully. 0 rows returned.")
+            except Exception as ex:
+                st.error(f"Query Execution Error: {ex}")
 
 
 def main():
