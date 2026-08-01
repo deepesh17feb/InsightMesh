@@ -38,13 +38,13 @@ These were settled during design review. Recorded here so they are not relitigat
    produced DDL. A system prompt biases the model toward correct design; the validator
    guarantees the non-negotiables. Prompt for quality, assertion for safety.
 3. **Context Librarian owns all data.** It is the only agent that touches chDB or
-   ClickHouse Cloud. The Engineer and the text-to-SQL expert have zero data access.
+   ClickHouse Cloud. The Engineer and the Query Architect have zero data access.
 4. **chDB refreshes from live before every run.** `system.tables` / `system.columns` is
    ground truth for structure; `schema_registry` is a mirror, not an authority. Drift
    between them is surfaced as a governance finding, not silently overwritten.
 5. **Field mapping is a design decision, owned by the Engineer.** Which event key lands in
    which column, and how nested keys flatten (`payment.amount` → `payment_amount`), is
-   design intent. The text-to-SQL expert renders it into DDL and the `INSERT`; it does not
+   design intent. The Query Architect renders it into DDL and the `INSERT`; it does not
    decide it.
 6. **Bounded retry, never open-ended ReAct.** One redesign attempt carrying the violations
    as feedback. Second failure falls back to a conservative template and says so in the
@@ -60,10 +60,16 @@ These were settled during design review. Recorded here so they are not relitigat
 
 | Agent | Owns | Never | Tools |
 | :--- | :--- | :--- | :--- |
-| **Context Librarian** | All data. chDB refresh, context package, strategy decision, semantic audit, DDL execution, event loading, registry + context sync. | Designs schemas. Writes SQL text. | `refresh_chdb_from_live`, `build_context_package`, `decide_strategy`, `context_diff`, `execute_ddl`, `load_events`, `register_schema_version`, `context_upsert`, `append_context_changelog` |
+| **Context Librarian** | All data. chDB refresh, context package, strategy decision, semantic audit, DDL execution, event loading, registry + context sync. | Designs schemas. Translates intent into SQL. | `refresh_chdb_from_live`, `build_context_package`, `decide_strategy`, `context_diff`, `execute_ddl`, `load_events`, `register_schema_version`, `context_upsert`, `append_context_changelog` |
 | **Instrumentation Engineer** | Schema design — ordering key, partitioning, column types, TTL, MV justification, event→column field mapping. LLM-driven. | Touches any database. Emits SQL. | `design_schema` (LLM) |
-| **Text-to-SQL Expert** | Rendering design intent into ClickHouse DDL, MV DDL, and the `INSERT` statement. | Touches any database. Makes design decisions. | `design_to_ddl` (LLM) |
+| **Query Architect** | Rendering design intent into ClickHouse DDL, MV DDL, and the `INSERT` statement. **Shared with CUJ 2**, where the same persona emits `SELECT` statements — see `docs/CUJ2.md` § 3. | Touches any database. Makes design decisions. | `design_to_ddl` (LLM) |
 | **Human operator** | The approval gate. | — | LibreChat `APPROVE` |
+
+**What "never writes SQL" means.** The boundary is *translation*, not the presence of SQL
+strings. Turning intent — a design, a question, a metric formula — into SQL belongs to the
+Query Architect exclusively. A Librarian tool holding a fixed query (`SELECT ... FROM
+system.tables`, `INSERT INTO context_changelog ...`) is not translation: the query shape is
+authored in version-controlled tool code, is testable, and does not vary with the request.
 
 ---
 
@@ -150,7 +156,7 @@ flowchart TD
 
     IE["<b>Instrumentation Engineer</b><br/>LLM brain — decides schema design<br/><i>no data access</i>"]
     CL["<b>Context Librarian</b><br/>owns ALL data<br/>refresh · context · strategy · audit · deploy · load"]
-    QA["<b>Text-to-SQL Expert</b><br/>design intent to DDL and INSERT<br/><i>no data access</i>"]
+    QA["<b>Query Architect</b><br/>design intent to DDL and INSERT<br/><i>no data access · shared with CUJ 2</i>"]
     OP(["<b>Human operator</b><br/>in LibreChat"])
 
     IE -->|"1 · request context"| CL
@@ -189,7 +195,7 @@ flowchart TD
 
 **Plane rule:** metadata versus analytical data, not chDB versus ClickHouse. The Librarian
 reads `system.columns` (structure, no rows) and owns chDB (semantics). It writes rows to
-ClickHouse Cloud only during the gated load. The Engineer and text-to-SQL expert read
+ClickHouse Cloud only during the gated load. The Engineer and Query Architect read
 neither.
 
 ---

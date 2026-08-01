@@ -75,13 +75,22 @@ Evaluation criteria:
 
 | Agent | Owns | Never | Reads / writes |
 | :--- | :--- | :--- | :--- |
-| **Context Librarian** | Catalog, table semantics, live profile probe, known-issue match, insight persistence. Sole writer. | Writes SQL. Interprets results for the PM. | reads chDB + `system.tables` + aggregates; writes chDB |
-| **Query Architect** | Translating the interpretation into SELECT statements — 5 cuts, intersection, alt-denominator headline. | Touches any database. Decides what a metric means. | nothing |
-| **Product Analyst** | Executing the plan, auditing results, deriving signals, scoring confidence, PM synthesis. | Writes SQL. Writes to any database. | reads ClickHouse rows via aggregates only |
+| **Context Librarian** | Catalog, table semantics, live profile probe, known-issue match, insight persistence. Sole writer. | Translates intent into SQL. Interprets results for the PM. | reads chDB + `system.tables` + aggregates; writes chDB |
+| **Query Architect** | Translating the interpretation into SELECT statements — 5 cuts, intersection, alt-denominator headline, baseline metric. **Shared with CUJ 1**, where the same persona emits DDL, MV and `INSERT` — see `docs/CUJ1.md` § 3. | Touches any database. Decides what a metric means. | nothing |
+| **Product Analyst** | Executing the plan, auditing results, deriving signals, scoring confidence, PM synthesis. | Translates intent into SQL. Writes to any database. | reads ClickHouse rows via aggregates only |
 
 **Plane rule:** metadata versus analytical data, not chDB versus ClickHouse. The Librarian
 reads structure and aggregates; only the Analyst executes the analytical cut queries. No agent
 pulls raw rows into LLM context.
+
+**What "never writes SQL" means.** The boundary is *translation*, not the presence of SQL
+strings. Turning intent — a question, a metric formula, a design — into SQL belongs to the
+Query Architect exclusively. A Librarian tool holding a fixed query is not translation: the
+shape is authored in version-controlled tool code, is testable, and does not vary with the
+request. Phases 1a, 1b and 1c are templated queries of this kind. The one genuinely
+generative piece in the context-load path — the **baseline metric**, which requires rendering
+a `business_context` formula string into SQL — is deliberately deferred to the Query
+Architect in phase 5 rather than embedded in the probe.
 
 ---
 
@@ -113,7 +122,7 @@ flowchart TD
     KI["<b>4 · Known-issue match</b> — deterministic, once"]
     KI --> PLAN
 
-    PLAN["<b>5 · Query plan</b> — text-to-SQL<br/>5 cuts: device · geo · destination · funnel stage · <b>user segment</b><br/>+ intersection query + headline on alt denominator<br/>date range and caveats applied"]
+    PLAN["<b>5 · Query plan</b> — Query Architect<br/>5 cuts: device · geo · destination · funnel stage · <b>user segment</b><br/>+ intersection query + headline on alt denominator + baseline metric<br/>date range and caveats applied"]
     PLAN --> VAL
 
     VAL{"<b>6 · Check</b> — SELECT-only · columns exist"}
