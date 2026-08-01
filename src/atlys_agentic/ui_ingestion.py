@@ -138,6 +138,8 @@ def render_app():
         spec_path = paths.spec_md(selected_spec)
         if spec_path.exists():
             spec_text = spec_path.read_text(encoding="utf-8")
+        inferred_table = tools.Tool_Infer_Table_Name(selected_spec, spec_text)
+
         # Sleek, compact & highly noticeable Inferred Table Badge
         st.markdown(
             f"""
