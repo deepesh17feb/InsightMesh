@@ -102,3 +102,26 @@ Upon pressing **'Proceed'** to approve this plan, the user should:
 1. Verify the `.env` file credentials match the Atlys Cloud instance.
 2. Check the Langfuse dashboard post-run to verify that traces correctly populated under a "Clickathon Run" project.
 3. View the ClickHouse Cloud Query Console to verify that the tables from `01_express_checkout` were successfully created natively.
+
+---
+
+## Extended Goals & Future Roadmap
+
+### Feature Extension: External Web & Bug Tracker Search Tool (`Tool_Search_External_Issues`)
+
+#### Motivation & Value
+Product conversion anomalies frequently originate outside the application codebase (e.g. zero-day mobile OS regressions, WebKit autofill malfunctions, third-party payment gateway outages, or regional telecom SMS OTP delivery failures). Integrating a targeted external web search capability empowers the **Product Analyst** agent to cross-verify live ClickHouse anomaly cuts against public vendor issue trackers and status portals.
+
+#### Architectural Design & Guardrails
+1. **Strict Separation of Ground Truth (Zero Hallucination Policy)**:
+   - **Internal Ground Truth (Immutable)**: All internal metric formulas, denominator rules (`purchases/sessions` vs `purchases/application_started`), table schemas, and business thresholds remain strictly anchored to `chDB.business_context` and ClickHouse Cloud `schema_registry`.
+   - **External Search (Correlation Only)**: The search tool is strictly barred from redefining internal KPIs, schemas, or metric boundaries. It is used solely to verify external root causes (e.g., *"WebKit Bugzilla issue #25412 regarding iOS 17.4 OTP paste failure"*).
+2. **Dedicated Tool Definition**:
+   - Tool Name: `Tool_Search_External_Issues(query: str, domain: str)`
+   - Backends: Scoped API integration with Tavily, SerperDev, or DuckDuckGo Search API.
+   - Target Surfaces: Apple Developer Forums, WebKit Bugzilla, Chromium Issue Tracker, Android WebView release notes, and payment gateway status dashboards (Stripe, Razorpay, UPI).
+3. **Langfuse Observability & Lineage**:
+   - Every external search execution records input queries, cited URLs, and retrieved snippets as distinct spans (`mcp::web_search` or `tool::external_search`) nested within the parent Langfuse trace tree.
+4. **Confidence Score Calibration**:
+   - External corroboration from official vendor issue trackers increases the analyst's diagnostic confidence score and embeds external citation links into the executive finding report.
+

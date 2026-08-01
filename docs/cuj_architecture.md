@@ -178,3 +178,16 @@ InsightMesh leverages embedded `chDB` to maintain four foundational metadata sto
 | **`business_context`** | **Looker LookML**, **dbt Semantic Layer**, Atlan | **~2012–2021**: Solved metric divergence (conflicting definitions across teams) and codified data quality caveats. | Single source of truth for metric formulas, caveats (e.g. `OS NULL on Android`), and known issues `K1`–`K7`. Evaluated by the **Context Librarian**. |
 | **`context_changelog`** | **OpenLineage**, **Marquez** (Linux Foundation), Monte Carlo | **~2020–2022**: Data observability revolution; provided immutable audit logs of who changed business rules and when. | Append-only governance audit log tracking every definition updated by the **Context Librarian** with author agent and Langfuse trace ID. |
 | **`insights`** | **Feature Stores** (Feast, Tecton), Langfuse Agent Observability | **~2020–2025**: Analytical findings previously died in Slack/slides; AI agents require durable memory to cite verified findings. | Persists structured anomaly diagnoses, multi-cut segment deltas, and statistical confidence scores produced by the **Product Analyst**. |
+
+---
+
+## 4. Extended Goals & Roadmap: External Web & Bug Tracker Search Tool
+
+### Architecture & Value Proposition
+In production telemetry pipelines, significant funnel conversion regressions often stem from external system faults (e.g. OS-level keyboard/autofill regressions in iOS WebKit, regional payment gateway outages, or carrier SMS delivery disruptions).
+
+As an architectural extension, the **Product Analyst** agent can be equipped with `Tool_Search_External_Issues`:
+1. **Targeted Vendor Search**: Queries public technical knowledge bases (WebKit Bugzilla, Chromium Issues, Android WebView release notes, Stripe/Razorpay/UPI status dashboards).
+2. **Zero Hallucination Guardrail**: The tool is strictly isolated from internal business logic. All metric formulas and schema contracts remain permanently rooted in `chDB.business_context`.
+3. **Traceability**: All external lookups, queries, and cited URLs are traced under the root Langfuse execution tree (`mcp::web_search`).
+
