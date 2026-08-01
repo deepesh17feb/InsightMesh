@@ -157,27 +157,36 @@ def _render_cuj1_ingestion(available_specs: list[str]):
         spec_path = paths.spec_md(selected_spec)
         if spec_path.exists():
             spec_text = spec_path.read_text(encoding="utf-8")
-        inferred_table = tools.Tool_Infer_Table_Name(selected_spec, spec_text)
 
-        # Sleek, compact & highly noticeable Inferred Table Badge
-        st.markdown(
-            f"""
-            <div style="background: rgba(30, 58, 138, 0.25); border: 1px solid #3B82F6; border-radius: 7px; padding: 0.45rem 0.65rem; margin: 0.5rem 0 0.65rem 0;">
-                <div style="font-size: 0.68rem; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">⚡ Inferred Table</div>
-                <div style="font-size: 0.90rem; font-weight: 700; color: #60A5FA; font-family: 'JetBrains Mono', monospace; margin-top: 0.1rem; word-break: break-all;">
-                    {inferred_table}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        with st.expander("⚙️ Advanced Settings"):
-            override = st.checkbox("Override Inferred Table Name", value=False)
+        with st.expander("⚙️ Optional Table Override", expanded=False):
+            override = st.checkbox("Provide Custom Table Name", value=False)
             if override:
-                table_name = st.text_input("Custom Table Name", value=inferred_table)
+                table_name_input = st.text_input("Custom Table Name", value="", placeholder="e.g. custom_orders")
             else:
-                table_name = inferred_table
+                table_name_input = ""
+
+        if table_name_input:
+            st.markdown(
+                f"""
+                <div style="background: rgba(30, 58, 138, 0.25); border: 1px solid #3B82F6; border-radius: 7px; padding: 0.45rem 0.65rem; margin: 0.5rem 0 0.65rem 0;">
+                    <div style="font-size: 0.68rem; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Custom Table Set</div>
+                    <div style="font-size: 0.90rem; font-weight: 700; color: #60A5FA; font-family: 'JetBrains Mono', monospace; margin-top: 0.1rem;">
+                        {table_name_input}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """
+                <div style="background: rgba(30, 41, 59, 0.4); border: 1px dashed #475569; border-radius: 7px; padding: 0.45rem 0.65rem; margin: 0.5rem 0 0.65rem 0;">
+                    <div style="font-size: 0.68rem; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Target Table Name</div>
+                    <div style="font-size: 0.85rem; font-style: italic; color: #CBD5E1; margin-top: 0.1rem;">🤖 Auto-determined by Agent on run</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         st.divider()
         st.caption("🔒 **Guaranteed Cloud Safety**: Dry-Run mode audits context and produces schema proposals with zero mutation to ClickHouse Cloud or chDB.")
@@ -197,10 +206,11 @@ def _render_cuj1_ingestion(available_specs: list[str]):
     # Top KPI Metrics Row
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     kpi1.metric("Feature Spec", selected_spec)
-    kpi2.metric("Target Table", table_name)
+    target_table_placeholder = kpi2.empty()
+    target_table_placeholder.metric("Target Table", table_name_input if table_name_input else "🤖 Agent Inferred")
     kpi3.metric("Mode", "🛡️ Dry Run" if is_dry_run else "🚀 Live")
     strategy_placeholder = kpi4.empty()
-    strategy_placeholder.metric("Table Strategy", "Consulting...")
+    strategy_placeholder.metric("Table Strategy", "Pending Run...")
 
     st.divider()
 
@@ -237,20 +247,23 @@ def _render_cuj1_ingestion(available_specs: list[str]):
                 with st.spinner("Instrumentation Engineer consulting tables & inferring schema..."):
                     chdb_client.init_schema()
                     chdb_client.init_base_context()
-                    proposal = ingestion_flow.run(spec_id=selected_spec, table_name=table_name, dry_run=True)
+                    proposal = ingestion_flow.run(spec_id=selected_spec, table_name=table_name_input, dry_run=True)
                     st.session_state["proposal"] = proposal
                     st.session_state["last_spec"] = selected_spec
-                    st.session_state["last_table"] = table_name
+                    st.session_state["last_table"] = proposal.get("table_name", "")
 
         proposal = st.session_state.get("proposal")
         if proposal and st.session_state.get("last_spec") == selected_spec:
             consult = proposal.get("table_consultation", {})
             reasoning = proposal.get("reasoning", {})
+            resolved_table = proposal.get("table_name") or table_name_input or selected_spec.split("_", 1)[-1]
+            target_table_placeholder.metric("Target Table", resolved_table)
             strategy_placeholder.metric("Table Strategy", consult.get("strategy", "CREATE_NEW"))
 
             # 1. High-Level Executive Summary Card
-            st.success(f"✅ Schema proposal for `{table_name}` generated successfully.")
+            st.success(f"✅ Schema proposal for `{resolved_table}` generated successfully by agent.")
             st.info(
+                f"**Target Table Resolved:** `{resolved_table}`\n\n"
                 f"**Architecture Decision:** `{consult.get('strategy', 'CREATE_NEW')}`\n\n"
                 f"**Executive Summary:** {reasoning.get('high_level_summary', consult.get('recommendation', ''))}"
             )

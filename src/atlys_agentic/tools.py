@@ -382,7 +382,7 @@ def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str) -> dict:
 
     chdb_client.init_schema()
     existing = chdb_client.run(
-        f"SELECT max(version) AS v FROM schema_registry WHERE table = '{table_name}'"
+        f'SELECT max(version) AS v FROM schema_registry WHERE "table" = \'{table_name}\''
     )
     version = (existing[0]["v"] or 0) + 1 if existing and existing[0]["v"] is not None else 1
     columns_json = json.dumps(_columns_from_ddl(ddl)).replace("'", "''")
@@ -412,6 +412,7 @@ def Tool_Context_Diff(new_table: str, new_columns: list[str]) -> dict:
     conversion_rows = [r for r in context_rows if "conversion" in r.get("key", "").lower()]
 
     conflicts = []
+    # Trap 1: Conversion denominator ambiguity
     has_sessions_denominator = any("sessions" in r.get("definition", "").lower() for r in conversion_rows)
     has_application_started_denominator = any(
         "application_started" in r.get("definition", "").lower() for r in conversion_rows
@@ -423,6 +424,29 @@ def Tool_Context_Diff(new_table: str, new_columns: list[str]) -> dict:
             "the Analyst reports it."
         )
 
+    # Trap 2: Data quality caveat (os NULL on Android)
+    if "os" in new_columns or "device_type" in new_columns:
+        conflicts.append(
+            "Data quality caveat: telemetry records may contain os = NULL when device_type = 'android'. "
+            "Analyst queries must coalesce os with device_type."
+        )
+
+    # Trap 3: Anti-pattern detection (id-first order keys)
+    if "id" in new_columns and new_columns.index("id") == 0:
+        conflicts.append(
+            "Anti-pattern detected: Table schema should not lead ORDER BY with id. "
+            "Lead with (timestamp, user_id) instead."
+        )
+
+    # Trap 4: Post-purchase metric boundary
+    post_purchase_indicators = {"delivery_status", "on_time_delivery", "fulfillment_latency"}
+    if any(col in post_purchase_indicators for col in new_columns):
+        conflicts.append(
+            "Metric boundary caveat: Post-purchase fulfillment telemetry detected. "
+            "Delivery rate cannot be computed from funnel conversion tables alone."
+        )
+
+    # Trap 5: Entity lag / undocumented columns
     gaps = [
         f"{new_table}.{col} has no matching business_context definition (undocumented column)"
         for col in new_columns
@@ -503,7 +527,7 @@ def Tool_Score_Confidence(
 
 def Tool_Emit_Viz() -> dict:
     schema_history = chdb_client.run(
-        "SELECT table, version, spec_id, created_at FROM schema_registry ORDER BY created_at DESC"
+        'SELECT "table", version, spec_id, created_at FROM schema_registry ORDER BY created_at DESC'
     )
     insights = chdb_client.run(
         "SELECT spec_id, question, confidence, created_at FROM insights ORDER BY created_at DESC"

@@ -1,5 +1,7 @@
 import json
 import re
+import sqlite3
+from pathlib import Path
 
 from atlys_agentic import paths
 
@@ -18,13 +20,13 @@ _SCHEMA_DDL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS schema_registry (
-        table String,
+        "table" String,
         ddl String,
         columns_json String,
         spec_id String,
         version UInt16,
         created_at DateTime
-    ) ENGINE = MergeTree ORDER BY (table, version)
+    ) ENGINE = MergeTree ORDER BY ("table", version)
     """,
     """
     CREATE TABLE IF NOT EXISTS context_changelog (
@@ -49,8 +51,6 @@ _SCHEMA_DDL = [
     """,
 ]
 
-
-import sqlite3
 
 def _get_sqlite_conn():
     paths.CHDB_PATH.mkdir(parents=True, exist_ok=True)
@@ -81,7 +81,7 @@ def _run_sqlite_fallback(sql: str, fmt: str = "JSON"):
     conn = _get_sqlite_conn()
     clean = sql
     if clean.strip().upper() == "SHOW TABLES":
-        clean = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        clean = "SELECT name, name AS table_name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
     elif clean.strip().upper().startswith("CREATE TABLE"):
         clean = re.sub(r"\)\s*ENGINE\s*=.*$", ")", clean, flags=re.DOTALL | re.IGNORECASE)
         clean = re.sub(r"\bUInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
@@ -130,9 +130,54 @@ def init_schema() -> None:
         run(ddl, fmt="CSV")
 
 
+def reset_chdb() -> None:
+    """Reset all 4 chDB metadata tables for clean state isolation."""
+    init_schema()
+    for table_name in ("business_context", "schema_registry", "context_changelog", "insights"):
+        try:
+            run(f"TRUNCATE TABLE {table_name}", fmt="CSV")
+        except Exception:
+            pass
+
+
+def seed_existing_tables_metadata(ddl_sql_path: Path = None) -> int:
+    """Parse foundation tables from ddl.sql and register them into schema_registry."""
+    init_schema()
+    target_path = ddl_sql_path or paths.DDL_SQL
+    if not target_path or not target_path.exists():
+        return 0
+
+    content = target_path.read_text(encoding="utf-8")
+    table_blocks = re.findall(
+        r"(CREATE TABLE\s+([a-zA-Z0-9_]+)\s*\((.*?)\)\s*ENGINE\s*=\s*MergeTree.*?;)",
+        content,
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    seeded = 0
+    for ddl_full, table_name, body in table_blocks:
+        existing = run(f'SELECT "table" FROM schema_registry WHERE "table" = \'{table_name}\'')
+        if not existing:
+            cols = []
+            for line in body.splitlines():
+                line_s = line.strip().rstrip(",")
+                if line_s and not line_s.startswith("--"):
+                    cols.append(line_s.split()[0])
+            columns_json = json.dumps(cols).replace("'", "''")
+            ddl_escaped = ddl_full.strip().replace("'", "''")
+            run(
+                f"""INSERT INTO schema_registry VALUES
+                ('{table_name}', '{ddl_escaped}', '{columns_json}', '00_foundation_tables', 1, now())""",
+                fmt="CSV",
+            )
+            seeded += 1
+    return seeded
+
+
 def init_base_context() -> int:
     """Chunk base_context.md into business_context rows, one row per
     numbered section (## N. Title) split further by list item / paragraph."""
+    init_schema()
     try:
         run("TRUNCATE TABLE business_context", fmt="CSV")
     except Exception:
