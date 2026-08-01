@@ -225,3 +225,23 @@ def test_context_upsert_increments_version_and_writes_changelog():
     assert len(changelog_calls) == 1
     assert "old definition" in changelog_calls[0]
     assert "trace-123" in changelog_calls[0]
+
+def test_confidence_high_for_large_n_large_effect_matching_known_issue():
+    result = tools.Tool_Score_Confidence(
+        sample_size=50_000, effect_size_pct=15.0, known_issue_match=True, cut_consistency=0.9
+    )
+    assert result["score"] >= 0.8
+    assert "K" in result["rationale"] or "known issue" in result["rationale"].lower()
+
+
+def test_confidence_low_for_small_n_single_cut_blip():
+    result = tools.Tool_Score_Confidence(
+        sample_size=40, effect_size_pct=3.0, known_issue_match=False, cut_consistency=0.2
+    )
+    assert result["score"] < 0.4
+
+
+def test_confidence_score_always_in_unit_interval():
+    for n, eff, match, cons in [(0, 0, False, 0), (10**7, 500, True, 1.0)]:
+        result = tools.Tool_Score_Confidence(n, eff, match, cons)
+        assert 0.0 <= result["score"] <= 1.0

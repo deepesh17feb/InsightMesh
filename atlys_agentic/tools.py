@@ -250,3 +250,37 @@ def Tool_Context_Upsert(section: str, key: str, definition: str, agent: str, tra
         fmt="CSV",
     )
     return version
+
+def _sample_size_component(n: int) -> float:
+    if n <= 0:
+        return 0.0
+    import math
+    return min(1.0, math.log10(n + 1) / 5.0)  # ~1.0 at n=100k
+
+
+def Tool_Score_Confidence(
+    sample_size: int, effect_size_pct: float, known_issue_match: bool, cut_consistency: float
+) -> dict:
+    n_component = _sample_size_component(sample_size)
+    effect_component = min(1.0, abs(effect_size_pct) / 20.0)  # ~1.0 at a 20pp+ swing
+    consistency_component = max(0.0, min(1.0, cut_consistency))
+    known_issue_bonus = 0.15 if known_issue_match else 0.0
+
+    raw = (
+        0.35 * n_component
+        + 0.30 * effect_component
+        + 0.20 * consistency_component
+        + known_issue_bonus
+    )
+    score = max(0.0, min(1.0, raw))
+
+    parts = [
+        f"sample size n={sample_size} ({'strong' if n_component > 0.7 else 'thin'})",
+        f"effect {effect_size_pct:+.1f}pp vs baseline ({'large' if effect_component > 0.7 else 'small'})",
+        f"consistent across {cut_consistency:.0%} of cuts",
+    ]
+    if known_issue_match:
+        parts.append("matches a documented known issue (K1-K7)")
+    rationale = "; ".join(parts) + f" -> confidence {score:.2f}"
+
+    return {"score": round(score, 2), "rationale": rationale}
