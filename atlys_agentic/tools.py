@@ -115,3 +115,43 @@ def Tool_Infer_Schema(ndjson_path: Path, spec_md_text: str, table_name: str) -> 
         f"ORDER BY ({order_cols})\n"
         f"TTL timestamp + INTERVAL 12 MONTH;"
     )
+
+_SEGMENT_COLUMN_CANDIDATES = ("device_type", "os", "geoip_country_code", "destination")
+
+
+def _columns_from_ddl(ddl: str) -> list[str]:
+    body = ddl.split("(", 1)[1].rsplit(")", 1)[0]
+    cols = []
+    for line in body.splitlines():
+        line = line.strip().rstrip(",")
+        if line:
+            cols.append(line.split()[0])
+    return cols
+
+
+def Tool_Generate_MV(table_name: str, ddl: str, funnel_step_column: str = "event") -> str:
+    """Daily segment-rollup MV, only when a segment column exists — an MV
+    over a table with no segment dimension wouldn't earn its keep."""
+    cols = _columns_from_ddl(ddl)
+    segment_col = next((c for c in _SEGMENT_COLUMN_CANDIDATES if c in cols), None)
+    if segment_col is None:
+        return ""
+
+    step_expr = f"{funnel_step_column}, " if funnel_step_column in cols else ""
+    mv_name = f"{table_name}_daily_mv"
+    return (
+        f"-- justification: pre-aggregates daily/{segment_col} volume so the "
+        f"Analyst never scans raw {table_name} rows for segment cuts\n"
+        f"CREATE MATERIALIZED VIEW IF NOT EXISTS {mv_name}\n"
+        f"ENGINE = SummingMergeTree\n"
+        f"PARTITION BY toYYYYMM(day)\n"
+        f"ORDER BY (day, {segment_col}{', ' + funnel_step_column if step_expr else ''})\n"
+        f"AS SELECT\n"
+        f"    toYYYYMMDD(timestamp) AS day,\n"
+        f"    {segment_col},\n"
+        f"    {step_expr}"
+        f"    count() AS events,\n"
+        f"    uniq(user_id) AS users\n"
+        f"FROM {table_name}\n"
+        f"GROUP BY day, {segment_col}{', ' + funnel_step_column if step_expr else ''};"
+    )

@@ -117,3 +117,27 @@ def test_infer_schema_short_enum_string_gets_low_cardinality_without_name_hint(b
     # sampled values -> should still be classified as LowCardinality(String).
     ddl = tools.Tool_Infer_Schema(bugfix_ndjson, "spec text", "express_checkout")
     assert "plan_tier LowCardinality(String)" in ddl
+
+def test_generate_mv_creates_daily_segment_rollup():
+    ddl = (
+        "CREATE TABLE IF NOT EXISTS express_checkout\n"
+        "(\n    timestamp DateTime,\n    user_id String,\n"
+        "    device_type LowCardinality(String),\n    event LowCardinality(String)\n)\n"
+        "ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nORDER BY (timestamp, user_id)\n"
+        "TTL timestamp + INTERVAL 12 MONTH;"
+    )
+    mv = tools.Tool_Generate_MV("express_checkout", ddl)
+    assert "CREATE MATERIALIZED VIEW IF NOT EXISTS express_checkout_daily_mv" in mv
+    assert "toYYYYMMDD(timestamp)" in mv
+    assert "device_type" in mv
+    assert "-- justification:" in mv  # every MV must justify itself in the DDL comment
+
+
+def test_generate_mv_skips_when_no_segment_column_present():
+    ddl = (
+        "CREATE TABLE IF NOT EXISTS tiny\n(\n    timestamp DateTime,\n    user_id String\n)\n"
+        "ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nORDER BY (timestamp, user_id)\n"
+        "TTL timestamp + INTERVAL 12 MONTH;"
+    )
+    mv = tools.Tool_Generate_MV("tiny", ddl)
+    assert mv == ""
