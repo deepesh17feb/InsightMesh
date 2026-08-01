@@ -32,7 +32,7 @@ def build_intent_classifier_system_prompt(available_specs: list[str] | None = No
 INTENT_CLASSIFIER_SYSTEM_PROMPT = build_intent_classifier_system_prompt()
 
 
-GREETING_RESPONSE_MD = """### 👋 Hello! I'm the Atlys Product Analyst
+GREETING_RESPONSE_MD = """### 👋 Hello! I'm the Atlys Analytics Agent
 
 I am your AI analytics assistant connected to Atlys's ClickHouse telemetry and feature metrics.
 
@@ -58,7 +58,7 @@ I am specialized in Atlys product analytics, ClickHouse event streams, and featu
 Please ask a question regarding Atlys feature funnels, conversion rates, or telemetry anomalies."""
 
 
-def build_product_analyst_synthesis_prompt(
+def build_analytics_agent_synthesis_prompt(
     question: str,
     spec_id: str,
     table_name: str,
@@ -66,9 +66,9 @@ def build_product_analyst_synthesis_prompt(
     cuts: dict,
     confidence: dict,
 ) -> str:
-    """Construct prompt for Product Analyst Gemini synthesis."""
+    """Construct prompt for Analytics Agent Gemini synthesis."""
     return (
-        f"You are the Lead Product Analyst at Atlys diagnosing a production telemetry question.\n"
+        f"You are the Analytics Agent at Atlys diagnosing a production telemetry question.\n"
         f"Question: '{question}'\n"
         f"Domain Spec: {spec_id} (Table: {table_name})\n"
         f"Matched Known Issue in Context Layer: {known_issue or 'None detected'}\n"
@@ -78,16 +78,16 @@ def build_product_analyst_synthesis_prompt(
     )
 
 
-def build_instrumentation_engineer_prompt(
+def build_instrumentation_agent_prompt(
     spec_id: str,
     table_name: str,
     ddl: str,
     strategy: str,
     recommendation: str,
 ) -> str:
-    """Construct prompt for Instrumentation Engineer Gemini schema review."""
+    """Construct prompt for Instrumentation Agent Gemini schema review."""
     return (
-        f"You are the Lead Instrumentation Engineer at Atlys reviewing a ClickHouse schema for feature spec '{spec_id}'.\n"
+        f"You are the Instrumentation Agent at Atlys reviewing a ClickHouse schema for feature spec '{spec_id}'.\n"
         f"Target Table: {table_name}\n"
         f"Proposed DDL:\n{ddl}\n\n"
         f"Table Consultation Strategy: {strategy}\n"
@@ -96,16 +96,16 @@ def build_instrumentation_engineer_prompt(
     )
 
 
-def build_context_librarian_prompt(
+def build_context_agent_prompt(
     spec_id: str,
     table_name: str,
     additions: list,
     conflicts: list,
     gaps: list,
 ) -> str:
-    """Construct prompt for Context Librarian Gemini audit synthesis."""
+    """Construct prompt for Context Agent Gemini audit synthesis."""
     return (
-        f"You are the Context Librarian at Atlys auditing a new ClickHouse schema against corporate business metrics.\n"
+        f"You are the Context Agent at Atlys auditing a new ClickHouse schema against corporate business metrics.\n"
         f"Feature Spec: {spec_id}\n"
         f"Table: {table_name}\n"
         f"Schema Additions: {additions}\n"
@@ -121,9 +121,9 @@ def build_instrumentation_followup_prompt(
     current_ddl: str,
     spec_context: str = "",
 ) -> str:
-    """Construct prompt for Instrumentation Engineer LLM multi-turn follow-up queries."""
+    """Construct prompt for Instrumentation Agent LLM multi-turn follow-up queries."""
     return (
-        f"You are the Staff Instrumentation Engineer and ClickHouse Telemetry Architect at Atlys.\n"
+        f"You are the Instrumentation Agent and ClickHouse Telemetry Architect at Atlys.\n"
         f"Target Table: {table_name}\n"
         f"Current ClickHouse DDL:\n{current_ddl}\n\n"
         f"Context / Spec Details: {spec_context or 'Standard event telemetry stream'}\n\n"
@@ -131,4 +131,10 @@ def build_instrumentation_followup_prompt(
         f"Provide a rigorous, expert ClickHouse engineering response explaining storage mechanics, "
         f"index granularity, partition management, or updated DDL if a schema change was requested."
     )
+
+
+# Aliases for backward compatibility
+build_product_analyst_synthesis_prompt = build_analytics_agent_synthesis_prompt
+build_instrumentation_engineer_prompt = build_instrumentation_agent_prompt
+build_context_librarian_prompt = build_context_agent_prompt
 
