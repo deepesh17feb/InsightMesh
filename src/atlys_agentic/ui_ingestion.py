@@ -13,6 +13,7 @@ from atlys_agentic.flows import ingestion_flow
 
 def render_app():
     import streamlit as st
+    from atlys_agentic import tools
 
     st.set_page_config(
         page_title="Atlys Feature Ingestion Portal",
@@ -34,22 +35,49 @@ def render_app():
         st.warning(f"No specs found in {paths.SPECS_DIR}")
         return
 
+    # Top-level Mode Selector
+    mode = st.radio(
+        "Ingestion Execution Mode:",
+        ["🛡️ Dry Run Mode (Inspect & Propose — Zero Cloud Mutation)", "🚀 Live Mode (Deploy to ClickHouse Cloud with HITL Gate)"],
+        index=0,
+        horizontal=True,
+    )
+    is_dry_run = "Dry Run" in mode
+
+    if is_dry_run:
+        st.info("🛡️ **Dry Run Mode Active**: The agent infers schemas, creates Materialized Views, and audits `business_context` without mutating ClickHouse Cloud or chDB.")
+    else:
+        st.warning("⚠️ **Live Deployment Mode**: Proposed DDL and Materialized Views will be executed on ClickHouse Cloud upon your approval.")
+
+    st.divider()
+
+    # Sidebar: Spec Selection & Auto-inferred Table Name
     with st.sidebar:
-        st.header("Ingestion Configuration")
-        selected_spec = st.selectbox("Select Feature Specification", available_specs)
-        default_table = selected_spec.split("_", 1)[-1] if "_" in selected_spec else selected_spec
-        table_name = st.text_input("Target ClickHouse Table Name", value=default_table)
-        st.divider()
-        st.info("💡 **Dry Run Mode**: Inactive mutation. Inspects events, generates DDL, and audits context without modifying ClickHouse Cloud or chDB.")
+        st.header("Feature Specification")
+        selected_spec = st.selectbox("Select Spec", available_specs)
+
+        # Agent auto-infers table name from spec.md or spec ID
+        spec_text = ""
+        spec_path = paths.spec_md(selected_spec)
+        if spec_path.exists():
+            spec_text = spec_path.read_text(encoding="utf-8")
+        inferred_table = tools.Tool_Infer_Table_Name(selected_spec, spec_text)
+
+        st.metric("Inferred Table Name", inferred_table, help="Inferred automatically by the Instrumentation Engineer agent from the spec.")
+
+        override = st.checkbox("⚙️ Override Inferred Table Name")
+        if override:
+            table_name = st.text_input("Custom Table Name", value=inferred_table)
+        else:
+            table_name = inferred_table
 
     col1, col2 = st.columns([1, 1])
 
     with col1:
         st.subheader("1. Feature Specification & Events")
-        spec_path = paths.spec_md(selected_spec)
         if spec_path.exists():
             with st.expander("📄 Feature Specification (`spec.md`)", expanded=True):
-                st.markdown(spec_path.read_text(encoding="utf-8"))
+                st.markdown(spec_text)
         else:
             st.error(f"Spec file not found at {spec_path}")
 
@@ -60,13 +88,14 @@ def render_app():
                 st.code("\n".join(lines), language="json")
 
     with col2:
-        st.subheader("2. Schema Proposal & Cloud Deployment")
+        st.subheader("2. Agent Schema Inference & Context Audit")
 
-        run_dry_run = st.button("🔍 Generate Proposal (Dry Run)", type="primary", use_container_width=True)
+        action_label = "🔍 Run Dry Run (Generate Proposal)" if is_dry_run else "⚡ Generate Schema for Deployment"
+        run_btn = st.button(action_label, type="primary", use_container_width=True)
 
-        if "proposal" not in st.session_state or run_dry_run:
-            if run_dry_run:
-                with st.spinner("Analyzing spec and inferring optimal schema..."):
+        if "proposal" not in st.session_state or run_btn:
+            if run_btn:
+                with st.spinner("Instrumentation Engineer analyzing spec & events..."):
                     chdb_client.init_schema()
                     chdb_client.init_base_context()
                     proposal = ingestion_flow.run(spec_id=selected_spec, table_name=table_name, dry_run=True)
@@ -76,7 +105,7 @@ def render_app():
 
         proposal = st.session_state.get("proposal")
         if proposal and st.session_state.get("last_spec") == selected_spec:
-            st.success("✅ Schema proposal generated successfully (Dry Run).")
+            st.success(f"✅ Schema proposal for `{table_name}` generated successfully.")
 
             with st.expander("🏗️ Proposed ClickHouse Table DDL", expanded=True):
                 st.code(proposal.get("ddl", ""), language="sql")
@@ -96,23 +125,26 @@ def render_app():
                 if diff.get("gaps"):
                     st.warning(f"Undocumented Gaps: {diff.get('gaps')}")
 
-            st.divider()
-            st.subheader("3. Human-in-the-Loop (HITL) Gate")
-            confirm = st.checkbox("I have reviewed the proposed DDL and authorize deployment to ClickHouse Cloud.")
+            if not is_dry_run:
+                st.divider()
+                st.subheader("3. Human-in-the-Loop (HITL) Gate")
+                confirm = st.checkbox(f"I authorize deploying `{table_name}` to ClickHouse Cloud.")
 
-            if st.button("🚀 Approve & Deploy to ClickHouse Cloud", type="secondary", disabled=not confirm, use_container_width=True):
-                with st.spinner("Deploying DDL and synchronizing context layer..."):
-                    result = ingestion_flow.run(
-                        spec_id=selected_spec,
-                        table_name=table_name,
-                        input_fn=lambda _: "APPROVE",
-                        dry_run=False,
-                    )
-                    if result.get("approved"):
-                        st.balloons()
-                        st.success(f"🎉 Successfully deployed `{table_name}` to ClickHouse Cloud and updated `chDB.schema_registry`!")
-                    else:
-                        st.error(f"Deployment rejected or failed: {result}")
+                if st.button("🚀 Approve & Deploy to ClickHouse Cloud", type="secondary", disabled=not confirm, use_container_width=True):
+                    with st.spinner("Deploying DDL and synchronizing context layer..."):
+                        result = ingestion_flow.run(
+                            spec_id=selected_spec,
+                            table_name=table_name,
+                            input_fn=lambda _: "APPROVE",
+                            dry_run=False,
+                        )
+                        if result.get("approved"):
+                            st.balloons()
+                            st.success(f"🎉 Successfully deployed `{table_name}` to ClickHouse Cloud and registered version in `chDB.schema_registry`!")
+                        else:
+                            st.error(f"Deployment rejected or failed: {result}")
+            else:
+                st.caption("🔒 *Dry-Run Active: ClickHouse Cloud and chDB were not modified.*")
 
 
 def main():

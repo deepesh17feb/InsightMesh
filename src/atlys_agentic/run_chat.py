@@ -48,7 +48,7 @@ class ChatCompletionRequest(BaseModel):
 
 class IngestionRequest(BaseModel):
     spec_id: str
-    table_name: str
+    table_name: str = ""
 
 
 _DEFAULT_BASE_SQL = "SELECT * FROM purchase_completed"
@@ -77,7 +77,7 @@ def propose_ingestion(req: IngestionRequest):
     return {
         "status": "success",
         "spec_id": req.spec_id,
-        "table_name": req.table_name,
+        "table_name": result.get("table_name") or req.table_name,
         "dry_run": True,
         "ddl": result.get("ddl", ""),
         "mv_ddl": result.get("mv_ddl", ""),
@@ -99,7 +99,7 @@ def approve_ingestion(req: IngestionRequest):
     return {
         "status": "success" if result.get("approved") else "failed",
         "spec_id": req.spec_id,
-        "table_name": req.table_name,
+        "table_name": result.get("table_name") or req.table_name,
         "approved": result.get("approved", False),
         "ddl_result": result.get("ddl_result", {}),
         "diff_result": result.get("diff_result", {}),
@@ -202,7 +202,6 @@ _INGESTION_HTML = """<!DOCTYPE html>
     <div class="grid">
       <!-- Left Panel: Controls -->
       <div class="card">
-        <h2 class="card-title">Ingestion Setup</h2>
         <div class="form-group">
           <label for="specSelect">Select Feature Specification</label>
           <select id="specSelect" onchange="onSpecChange()">
@@ -213,21 +212,33 @@ _INGESTION_HTML = """<!DOCTYPE html>
             <option value="05_instant_forex">05_instant_forex</option>
           </select>
         </div>
-        <div class="form-group">
-          <label for="tableName">Target Table Name</label>
-          <input type="text" id="tableName" value="express_checkout" />
+
+        <div class="form-group" style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); padding: 0.75rem; border-radius: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Inferred Table:</span>
+            <span id="inferredBadge" class="badge" style="background:#1E3A8A; color:#93C5FD;">express_checkout</span>
+          </div>
+          <div style="margin-top: 0.6rem; font-size: 0.8rem;">
+            <label style="display: inline-flex; align-items: center; cursor: pointer; color: #94A3B8;">
+              <input type="checkbox" id="overrideCheck" onchange="toggleOverride()" style="width: auto; margin-right: 6px;" />
+              Override inferred table name
+            </label>
+          </div>
+          <div id="overrideBox" style="display: none; margin-top: 0.5rem;">
+            <input type="text" id="tableName" value="" placeholder="Custom table name" />
+          </div>
         </div>
 
         <button class="btn btn-primary" id="dryRunBtn" onclick="runDryRun()">
-          Generate Proposal (Dry Run)
+          🛡️ Run Dry Run (Generate Proposal)
         </button>
 
         <button class="btn btn-success" id="deployBtn" onclick="runApproveDeploy()" style="display:none;">
-          Approve & Deploy to Cloud
+          🚀 Approve & Deploy to Cloud
         </button>
 
         <div style="margin-top: 1.5rem; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">
-          <strong>Safety Guarantee:</strong> "Generate Proposal" executes purely in dry-run mode without modifying ClickHouse Cloud or chDB. "Deploy" applies changes only with explicit confirmation.
+          <strong>Safety Guarantee:</strong> "Run Dry Run" executes purely in non-mutating mode without modifying ClickHouse Cloud or chDB. "Deploy" requires explicit confirmation.
         </div>
       </div>
 
@@ -275,16 +286,29 @@ _INGESTION_HTML = """<!DOCTYPE html>
       } catch (e) { console.error(e); }
     }
 
+    function toggleOverride() {
+      const checked = document.getElementById('overrideCheck').checked;
+      const box = document.getElementById('overrideBox');
+      box.style.display = checked ? 'block' : 'none';
+      if (!checked) {
+        document.getElementById('tableName').value = '';
+      }
+    }
+
     function onSpecChange() {
       const select = document.getElementById('specSelect');
       const val = select.value;
       const clean = val.includes('_') ? val.split('_').slice(1).join('_') : val;
-      document.getElementById('tableName').value = clean;
+      document.getElementById('inferredBadge').textContent = clean;
+      if (!document.getElementById('overrideCheck').checked) {
+        document.getElementById('tableName').value = clean;
+      }
     }
 
     async function runDryRun() {
       const spec_id = document.getElementById('specSelect').value;
-      const table_name = document.getElementById('tableName').value;
+      const custom_table = document.getElementById('tableName').value.trim();
+      const table_name = custom_table || document.getElementById('inferredBadge').textContent;
       const btn = document.getElementById('dryRunBtn');
       const alertBox = document.getElementById('statusAlert');
       const deployBtn = document.getElementById('deployBtn');
