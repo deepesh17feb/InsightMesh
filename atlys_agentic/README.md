@@ -34,10 +34,13 @@ cp atlys_agentic/config/.env.example atlys_agentic/config/.env
 
 Key environment variables in `atlys_agentic/config/.env`:
 - `CLICKHOUSE_HOST`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`, `CLICKHOUSE_PORT`, `CLICKHOUSE_SECURE`
+- `CLICKHOUSE_DATABASE` (e.g. `clickathon`)
 - `LLM_MODEL` (e.g. `gemini/gemini-2.5-flash` or `gemini/gemini-flash-latest`)
 - `GEMINI_API_KEY`
 - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`
 - `CHDB_PATH` (defaults to `./chdb_data`)
+- `CREWAI_TRACING_ENABLED=false`
+- `CREWAI_DISABLE_TELEMETRY=true`
 
 ---
 
@@ -128,7 +131,24 @@ curl -X POST http://localhost:8008/v1/chat/completions \
 4. **Confidence Scoring**: Computes deterministic confidence score $f(N, \Delta, \text{match}, \text{cuts}) \in [0, 1]$.
 5. **Synthesis**: Produces a structured PM markdown report, logs the insight into `chDB.insights`, and returns the OpenAI-formatted payload with Langfuse trace ID.
 
-#### 3. Connect to LibreChat (UI)
+#### 3. Run Programmatically via Python
+```python
+from atlys_agentic.flows import analysis_flow
+
+# Runs JIT context retrieval from chDB, executes multi-cut ClickHouse queries, and scores confidence
+result = analysis_flow.run(
+    question="Is there an iOS OTP drop on Express Checkout?",
+    spec_id="01_express_checkout",
+    base_sql="SELECT * FROM otp_entered"
+)
+
+print(result["answer_md"])
+print("Confidence:", result["confidence"]["score"])
+print("Known issue matched:", result["known_issue_match"])
+print("Multi-cut dimensions:", list(result["cuts"].keys()))
+```
+
+#### 4. Connect to LibreChat (UI)
 Start the pre-configured LibreChat container:
 ```bash
 docker compose -f atlys_agentic/librechat/docker-compose.librechat.yml up -d
@@ -145,4 +165,5 @@ To verify direct end-to-end integration between CrewAI, Gemini LLM (via LiteLLM)
 python -m atlys_agentic.crew --spec_id 01_express_checkout --table express_checkout
 ```
 Prints the synthesized reasoning and outputs the active Langfuse trace URL.
+
 
