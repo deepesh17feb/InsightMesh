@@ -1,0 +1,12 @@
+services:
+  librechat:
+    image: ghcr.io/danny-avila/librechat:latest
+    ports:
+      - "3080:3080"
+    volumes:
+      - ./librechat.yaml:/app/librechat.yaml
+    environment:
+      - CONFIG_PATH=/app/librechat.yaml
+      - HOST=0.0.0.0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

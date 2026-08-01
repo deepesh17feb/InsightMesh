@@ -1,0 +1,10 @@
+version: 1.2.1
+endpoints:
+  custom:
+    - name: "Atlys Analyst"
+      apiKey: "not-needed"
+      baseURL: "http://host.docker.internal:8008/v1"
+      models:
+        default: ["atlys-analyst"]
+      titleConvo: true
+      summarize: false
