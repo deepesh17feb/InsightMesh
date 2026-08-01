@@ -59,7 +59,7 @@ def _get_sqlite_conn():
     conn.row_factory = sqlite3.Row
     with conn:
         cursor = conn.cursor()
-        for ddl in SCHEMA_DDL:
+        for ddl in _SCHEMA_DDL:
             clean = re.sub(r"\)\s*ENGINE\s*=.*$", ")", ddl, flags=re.DOTALL | re.IGNORECASE)
             clean = re.sub(r"\bUInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
             clean = re.sub(r"\bInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
