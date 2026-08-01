@@ -189,6 +189,39 @@ def _render_cuj1_ingestion(available_specs: list[str]):
             )
 
         st.divider()
+        st.subheader("🧹 Metadata & Registry")
+
+        try:
+            reg_rows = chdb_client.run('SELECT "table", version FROM schema_registry')
+            reg_count = len(reg_rows) if isinstance(reg_rows, list) else 0
+        except Exception:
+            reg_rows = []
+            reg_count = 0
+
+        st.caption(f"**Registered Tables:** {reg_count} in `schema_registry`")
+        if isinstance(reg_rows, list) and reg_rows:
+            for r in reg_rows[:4]:
+                tname = r.get("table") or r.get("table_name", "table")
+                v = r.get("version", 1)
+                st.caption(f"• `{tname}` (v{v})")
+
+        btn_col1, btn_col2 = st.columns(2)
+        with btn_col1:
+            if st.button("🧹 Clear Schemas", use_container_width=True, help="Clear schema_registry so all incoming tables are evaluated as CREATE_NEW"):
+                chdb_client.run("TRUNCATE TABLE schema_registry", fmt="CSV")
+                st.session_state.pop("proposal", None)
+                st.toast("✅ Schema registry cleared! All tables will now be treated as CREATE_NEW.")
+                st.rerun()
+
+        with btn_col2:
+            if st.button("🔄 Reset chDB", use_container_width=True, help="Full reset: clears schema registry, context changelog, and re-initializes base context"):
+                chdb_client.reset_chdb()
+                chdb_client.init_base_context()
+                st.session_state.pop("proposal", None)
+                st.toast("✅ Full chDB reset complete!")
+                st.rerun()
+
+        st.divider()
         st.caption("🔒 **Guaranteed Cloud Safety**: Dry-Run mode audits context and produces schema proposals with zero mutation to ClickHouse Cloud or chDB.")
 
     # Execution Mode Selector (Tabs / Radio)
