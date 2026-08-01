@@ -318,13 +318,13 @@ def Tool_Score_Confidence(
 
 def Tool_Emit_Viz() -> dict:
     schema_history = chdb_client.run(
-        "SELECT table, version, spec_id, created_at FROM schema_registry ORDER BY created_at DESC"
+        'SELECT "table" as table_name, version, spec_id, ddl, created_at FROM schema_registry ORDER BY created_at DESC'
     )
     insights = chdb_client.run(
-        "SELECT spec_id, question, confidence, created_at FROM insights ORDER BY created_at DESC"
+        "SELECT spec_id, question, answer_md, confidence, cuts_json, trace_id, created_at FROM insights ORDER BY created_at DESC"
     )
     context_changelog = chdb_client.run(
-        "SELECT ts, change_type, agent, trace_id FROM context_changelog ORDER BY ts DESC"
+        "SELECT ts, change_type, before, after, agent, trace_id FROM context_changelog ORDER BY ts DESC"
     )
     result = {
         "schema_history": schema_history,
