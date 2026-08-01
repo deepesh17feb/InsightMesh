@@ -66,3 +66,33 @@ def trace_url() -> str | None:
     if _current_trace_id is None:
         return None
     return client().get_trace_url(trace_id=_current_trace_id)
+
+
+def new_trace(spec_id: str) -> str:
+    """Create a new trace id tagged with spec_id."""
+    global _current_trace_id
+    try:
+        c = client()
+        if hasattr(c, "trace"):
+            t = c.trace(name=f"clickathon-run-{spec_id}", tags=[spec_id])
+            _current_trace_id = getattr(t, "id", str(t))
+            return _current_trace_id
+    except Exception:
+        pass
+    _current_trace_id = f"trace-{spec_id}"
+    return _current_trace_id
+
+
+def span(trace_id: str, name: str, input: dict, output: dict, metadata: dict | None = None) -> None:
+    """Record a span with input/output under the trace."""
+    try:
+        c = client()
+        if hasattr(c, "span"):
+            c.span(trace_id=trace_id, name=name, input=input, output=output, metadata=metadata or {})
+        elif hasattr(c, "start_as_current_observation"):
+            with c.start_as_current_observation(name=name, as_type="span", input=input, metadata=metadata or {}) as s:
+                if hasattr(s, "update"):
+                    s.update(output=output)
+    except Exception:
+        pass
+
