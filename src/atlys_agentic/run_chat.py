@@ -2,17 +2,23 @@
 
 Exposes POST /v1/chat/completions wired to AnalysisFlow.
 """
+import json
 import time
 import uuid
 
 try:
     from fastapi import FastAPI
-    from fastapi.responses import HTMLResponse
+    from fastapi.responses import HTMLResponse, StreamingResponse
     from pydantic import BaseModel, Field
 except ImportError:  # pragma: no cover
     class HTMLResponse:  # type: ignore
         def __init__(self, content: str = "", status_code: int = 200):
             self.content = content
+
+    class StreamingResponse:  # type: ignore
+        def __init__(self, generator=None, media_type: str = "text/event-stream"):
+            self.generator = generator
+            self.media_type = media_type
 
     class FastAPI:  # type: ignore
         def __init__(self, title: str = ""):
@@ -44,6 +50,14 @@ class ChatMessage(BaseModel):
 class ChatCompletionRequest(BaseModel):
     model: str = "atlys-analyst"
     messages: list[ChatMessage] = Field(min_length=1)
+    stream: bool = False
+    temperature: float | None = None
+    top_p: float | None = None
+    max_tokens: int | None = None
+    presence_penalty: float | None = None
+    frequency_penalty: float | None = None
+
+    model_config = {"extra": "allow"}
 
 
 class IngestionRequest(BaseModel):
@@ -161,10 +175,69 @@ def chat_completions(req: ChatCompletionRequest):
         f"{result['answer_md']}\n\n"
         f"_confidence: {result['confidence'].get('score')} · trace: {result['trace_id']}_"
     )
+    completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+    created_ts = int(time.time())
+
+    # Handle streaming if requested by LibreChat
+    if req.stream:
+        def sse_generator():
+            # Initial role delta chunk
+            init_chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created_ts,
+                "model": req.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant", "content": ""},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+            yield f"data: {json.dumps(init_chunk)}\n\n"
+
+            # Stream content in chunks
+            lines = content.splitlines(keepends=True)
+            for chunk_str in lines:
+                chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": created_ts,
+                    "model": req.model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": chunk_str},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+
+            # Final finish stop chunk
+            final_chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created_ts,
+                "model": req.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": "stop",
+                    }
+                ],
+            }
+            yield f"data: {json.dumps(final_chunk)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(sse_generator(), media_type="text/event-stream")
+
     return {
-        "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+        "id": completion_id,
         "object": "chat.completion",
-        "created": int(time.time()),
+        "created": created_ts,
         "model": req.model,
         "choices": [
             {
