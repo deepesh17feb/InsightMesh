@@ -8,6 +8,8 @@ The system is designed with strict architectural constraints:
 - **Read-Only Analytics**: Analytical queries against ClickHouse Cloud are strictly `SELECT`-only; LLMs only receive aggregated JSON summaries.
 - **Full Observability**: Every agent step, tool execution, and SQL statement is traced to Langfuse.
 
+> 📊 **Architecture & Flow Diagrams**: For detailed visual diagrams and step-by-step walkthroughs of both Critical User Journeys, see [docs/cuj_architecture.md](docs/cuj_architecture.md).
+
 ---
 
 ## 1. Setup & Installation
