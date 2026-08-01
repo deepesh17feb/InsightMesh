@@ -24,3 +24,12 @@ def test_render_includes_row_values():
 def test_render_handles_empty_snapshot_without_crashing():
     text = cli_report.render({"schema_history": [], "insights": [], "context_changelog": []})
     assert "SCHEMA CHANGES OVER TIME" in text
+from unittest.mock import patch
+
+def test_dashboard_load_snapshot_delegates_to_emit_viz():
+    from atlys_agentic.viz import dashboard
+
+    with patch("atlys_agentic.viz.dashboard.tools.Tool_Emit_Viz", return_value=_SNAPSHOT) as mock_emit:
+        snapshot = dashboard.load_snapshot()
+    mock_emit.assert_called_once()
+    assert snapshot == _SNAPSHOT

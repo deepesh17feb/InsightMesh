@@ -245,3 +245,30 @@ def test_confidence_score_always_in_unit_interval():
     for n, eff, match, cons in [(0, 0, False, 0), (10**7, 500, True, 1.0)]:
         result = tools.Tool_Score_Confidence(n, eff, match, cons)
         assert 0.0 <= result["score"] <= 1.0
+import json as _json
+
+def test_emit_viz_writes_snapshot_with_three_views(tmp_path):
+    fixture = {
+        "schema_registry": [{"table": "express_checkout", "version": 1}],
+        "insights": [{"question": "does express lift conversion?", "confidence": 0.82}],
+        "context_changelog": [{"change_type": "context_upsert", "agent": "context_librarian"}],
+    }
+
+    def fake_run(sql, fmt="JSON"):
+        if "schema_registry" in sql:
+            return fixture["schema_registry"]
+        if "FROM insights" in sql:
+            return fixture["insights"]
+        if "context_changelog" in sql:
+            return fixture["context_changelog"]
+        return []
+
+    with patch("atlys_agentic.tools.chdb_client.run", side_effect=fake_run), \
+         patch("atlys_agentic.tools.paths.OUTPUTS_DIR", tmp_path):
+        result = tools.Tool_Emit_Viz()
+
+    assert result["schema_history"] == fixture["schema_registry"]
+    assert result["insights"] == fixture["insights"]
+    assert result["context_changelog"] == fixture["context_changelog"]
+    snapshot = _json.loads((tmp_path / "viz_snapshot.json").read_text())
+    assert snapshot == result

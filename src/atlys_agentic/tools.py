@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from atlys_agentic import ch_client, chdb_client
+from atlys_agentic import ch_client, chdb_client, paths
 
 _LOW_CARDINALITY_HINTS = {
     "device_type", "os", "currency", "channel", "saved_method_type",
@@ -284,3 +284,22 @@ def Tool_Score_Confidence(
     rationale = "; ".join(parts) + f" -> confidence {score:.2f}"
 
     return {"score": round(score, 2), "rationale": rationale}
+
+def Tool_Emit_Viz() -> dict:
+    schema_history = chdb_client.run(
+        "SELECT table, version, spec_id, created_at FROM schema_registry ORDER BY created_at DESC"
+    )
+    insights = chdb_client.run(
+        "SELECT spec_id, question, confidence, created_at FROM insights ORDER BY created_at DESC"
+    )
+    context_changelog = chdb_client.run(
+        "SELECT ts, change_type, agent, trace_id FROM context_changelog ORDER BY ts DESC"
+    )
+    result = {
+        "schema_history": schema_history,
+        "insights": insights,
+        "context_changelog": context_changelog,
+    }
+    paths.OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    (paths.OUTPUTS_DIR / "viz_snapshot.json").write_text(json.dumps(result, indent=2, default=str))
+    return result
