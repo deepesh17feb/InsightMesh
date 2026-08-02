@@ -2,17 +2,17 @@
 
 **Diagnostic Question:** How does application completion rate compare between solo applicants and group/family applications across destinations?  
 **Target Table:** `None`  
-**Evaluation Timestamp:** 2026-08-02T03:39:29.104808+00:00  
-**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/fb0d8273d66214a1019d1373352c5274  
+**Evaluation Timestamp:** 2026-08-02T03:55:47.492367+00:00  
+**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/1e28466e35e6dce3f543eae3c5814f18  
 **Calibrated Confidence Score:** None
 
 ---
 
 ## Executive Summary & Diagnostic Breakdown
 
-### Application Started — conversion rate analysis
+### Group Applications — conversion rate analysis
 
-**Interpretation:** `conversion_rate` on `application_started`, evaluated across 5 standard cuts (device, geo, destination, funnel stage, user segment).
+**Interpretation:** `conversion_rate` on `group_applications`, evaluated across 5 standard cuts (device, geo, destination, funnel stage, user segment).
 
 #### Headline
 
@@ -43,16 +43,16 @@ SELECT
     count(*) AS total_events,
     countIf(event = 'purchase_completed') AS purchases,
     round(countIf(event = 'purchase_completed') * 100.0 / nullIf(countIf(event = 'application_started'), 0), 2) AS conversion_pct
-FROM default.application_started
+FROM default.group_applications
 WHERE timestamp >= '2026-03-01 00:00:00' AND timestamp <= '2026-03-31 23:59:59'
 GROUP BY device_type, geoip_country_code
 ORDER BY total_events DESC LIMIT 5
 ```
 
-🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/fb0d8273d66214a1019d1373352c5274
-📄 `outputs/submission/base_funnel/insight_report.md`
+🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/1e28466e35e6dce3f543eae3c5814f18
+📄 `outputs/submission/02_group_family/insight_report.md`
 
-<!-- atlys:insight table=application_started metric=conversion_rate finding_key=application_started::conversion_rate::device_type::ios trace=fb0d8273d66214a1019d1373352c5274 -->
+<!-- atlys:insight table=group_applications metric=conversion_rate finding_key=group_applications::conversion_rate::device_type::ios trace=1e28466e35e6dce3f543eae3c5814f18 -->
 
 ---
 

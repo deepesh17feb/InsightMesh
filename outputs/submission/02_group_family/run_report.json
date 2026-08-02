@@ -1,16 +1,16 @@
 {
   "spec_id": "02_group_family",
   "table_name": "group_applications",
-  "timestamp": "2026-08-02T03:39:04.602694+00:00",
-  "trace_id": "71f08e17a7458a806c0a4ff91f5c7b98",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/933108bdee74f80b9dfdee2cd4515c48",
+  "timestamp": "2026-08-02T03:55:29.892889+00:00",
+  "trace_id": "4691f5638bd841b70e8f1175aec348da",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/46fef7e9ce0ca5f1d9f502b276b7eebe",
   "run_mode": "live_run",
-  "strategy": "CREATE",
+  "strategy": "EVOLVE",
   "strategy_why": "",
   "ddl": "CREATE TABLE IF NOT EXISTS group_applications (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    group_id String,\n    destination String,\n    group_size Int64,\n    traveller_index Nullable(Int64),\n    relation LowCardinality(String),\n    docs_complete UInt8,\n    travellers_submitted Nullable(Int64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
   "mv_ddl": "-- justification: daily segment rollup for accelerated dashboard query execution\nCREATE MATERIALIZED VIEW IF NOT EXISTS group_applications_daily_mv\nENGINE = SummingMergeTree\nPARTITION BY toYYYYMM(date)\nORDER BY (device_type, os, geoip_country_code, destination, date, event)\nAS SELECT\n    toYYYYMMDD(timestamp) AS date,\n    device_type, os, geoip_country_code, destination, event,\n    count() AS total_events,\n    uniqState(user_id) AS unique_users\nFROM group_applications\nGROUP BY device_type, os, geoip_country_code, destination, date, event;",
   "rows_loaded": 5453,
-  "schema_version": 1,
+  "schema_version": 2,
   "field_mapping": {
     "event": "event",
     "id": "id",
@@ -107,7 +107,7 @@
       },
       "output": {
         "status": "synced",
-        "live_tables_found": 14,
+        "live_tables_found": 16,
         "tables": [
           "abandoned_checkout_recovery",
           "application_started",
@@ -116,8 +116,10 @@
           "destination_card_clicked",
           "document_uploaded",
           "express_checkout",
+          "group_applications",
           "group_family",
           "group_family_applications",
+          "instant_forex_orders",
           "landing_page_scrolled",
           "pay_now_clicked",
           "promo_coupon_checkout",
@@ -141,7 +143,7 @@
     {
       "step": "context_agent::decide_strategy",
       "agent": "context_agent",
-      "why": "strategy decided: CREATE",
+      "why": "strategy decided: EVOLVE",
       "input": {
         "table": "group_applications",
         "columns": [
@@ -166,9 +168,9 @@
         ]
       },
       "output": {
-        "strategy": "CREATE",
-        "reason": "Table `group_applications` has no prior version registered in schema_registry. Proposing clean CREATE TABLE DDL.",
-        "target_version": 1
+        "strategy": "EVOLVE",
+        "reason": "Table `group_applications` previously registered at version 1. Proposing backward-compatible schema evolution.",
+        "target_version": 2
       }
     },
     {
@@ -328,7 +330,7 @@
       "output": {
         "status": "ok",
         "table": "group_applications",
-        "version": 1,
+        "version": 2,
         "error": null
       }
     },
@@ -350,13 +352,13 @@
     {
       "step": "context_agent::register_schema_version",
       "agent": "context_agent",
-      "why": "registered table 'group_applications' version 1 in schema_registry",
+      "why": "registered table 'group_applications' version 2 in schema_registry",
       "input": {
         "table": "group_applications",
-        "version": 1
+        "version": 2
       },
       "output": {
-        "version": 1
+        "version": 2
       }
     },
     {

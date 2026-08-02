@@ -2,8 +2,8 @@
 
 **Diagnostic Question:** What is the recovery conversion rate of abandoned checkout reminders by notification channel and discount tier?  
 **Target Table:** `None`  
-**Evaluation Timestamp:** 2026-08-02T03:41:03.731940+00:00  
-**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/53f8c1c88f5f2c2e9fadf16830648297  
+**Evaluation Timestamp:** 2026-08-02T03:57:22.485916+00:00  
+**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/583dae0dbcc8d2837bac9106ac94fe19  
 **Calibrated Confidence Score:** None
 
 ---
@@ -49,10 +49,10 @@ GROUP BY device_type, geoip_country_code
 ORDER BY total_events DESC LIMIT 5
 ```
 
-🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/53f8c1c88f5f2c2e9fadf16830648297
+🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/583dae0dbcc8d2837bac9106ac94fe19
 📄 `outputs/submission/04_abandoned_checkout_recovery/insight_report.md`
 
-<!-- atlys:insight table=abandoned_checkout_recovery metric=conversion_rate finding_key=abandoned_checkout_recovery::conversion_rate::device_type::ios trace=53f8c1c88f5f2c2e9fadf16830648297 -->
+<!-- atlys:insight table=abandoned_checkout_recovery metric=conversion_rate finding_key=abandoned_checkout_recovery::conversion_rate::device_type::ios trace=583dae0dbcc8d2837bac9106ac94fe19 -->
 
 ---
 

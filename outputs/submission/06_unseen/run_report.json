@@ -1,16 +1,16 @@
 {
   "spec_id": "06_unseen",
   "table_name": "promo_coupon_checkout",
-  "timestamp": "2026-08-02T03:42:25.079703+00:00",
-  "trace_id": "1a2955940ecc87133fe2bc383ebbf7de",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/f879aaf6daabe9a3977e8bca69f1a761",
+  "timestamp": "2026-08-02T03:58:32.705249+00:00",
+  "trace_id": "a82d9533e2b28b824781eb3bc8a15cc7",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/26e706dd8beb696925eac91ad44a6cff",
   "run_mode": "live_run",
-  "strategy": "CREATE",
+  "strategy": "EVOLVE",
   "strategy_why": "",
   "ddl": "CREATE TABLE IF NOT EXISTS promo_coupon_checkout (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    cart_value Float64,\n    currency LowCardinality(String),\n    coupon_code LowCardinality(String),\n    discount_type LowCardinality(String),\n    discount_amount Nullable(Float64),\n    final_value Nullable(Float64),\n    reject_reason LowCardinality(String)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
   "mv_ddl": "-- justification: daily segment rollup for accelerated dashboard query execution\nCREATE MATERIALIZED VIEW IF NOT EXISTS promo_coupon_checkout_daily_mv\nENGINE = SummingMergeTree\nPARTITION BY toYYYYMM(date)\nORDER BY (device_type, os, geoip_country_code, destination, date, event)\nAS SELECT\n    toYYYYMMDD(timestamp) AS date,\n    device_type, os, geoip_country_code, destination, event,\n    count() AS total_events,\n    uniqState(user_id) AS unique_users\nFROM promo_coupon_checkout\nGROUP BY device_type, os, geoip_country_code, destination, date, event;",
   "rows_loaded": 5363,
-  "schema_version": 1,
+  "schema_version": 2,
   "field_mapping": {
     "event": "event",
     "id": "id",
@@ -147,7 +147,7 @@
     {
       "step": "context_agent::decide_strategy",
       "agent": "context_agent",
-      "why": "strategy decided: CREATE",
+      "why": "strategy decided: EVOLVE",
       "input": {
         "table": "promo_coupon_checkout",
         "columns": [
@@ -173,9 +173,9 @@
         ]
       },
       "output": {
-        "strategy": "CREATE",
-        "reason": "Table `promo_coupon_checkout` has no prior version registered in schema_registry. Proposing clean CREATE TABLE DDL.",
-        "target_version": 1
+        "strategy": "EVOLVE",
+        "reason": "Table `promo_coupon_checkout` previously registered at version 1. Proposing backward-compatible schema evolution.",
+        "target_version": 2
       }
     },
     {
@@ -340,7 +340,7 @@
       "output": {
         "status": "ok",
         "table": "promo_coupon_checkout",
-        "version": 1,
+        "version": 2,
         "error": null
       }
     },
@@ -362,13 +362,13 @@
     {
       "step": "context_agent::register_schema_version",
       "agent": "context_agent",
-      "why": "registered table 'promo_coupon_checkout' version 1 in schema_registry",
+      "why": "registered table 'promo_coupon_checkout' version 2 in schema_registry",
       "input": {
         "table": "promo_coupon_checkout",
-        "version": 1
+        "version": 2
       },
       "output": {
-        "version": 1
+        "version": 2
       }
     },
     {

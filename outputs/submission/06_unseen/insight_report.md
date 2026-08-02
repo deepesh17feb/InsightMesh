@@ -2,8 +2,8 @@
 
 **Diagnostic Question:** What is the coupon apply rate and valid versus rejected mix, and how does conversion compare to baseline?  
 **Target Table:** `None`  
-**Evaluation Timestamp:** 2026-08-02T03:42:57.628055+00:00  
-**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/ab95da697de63f6336d9045ba0073251  
+**Evaluation Timestamp:** 2026-08-02T03:59:06.055221+00:00  
+**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/ec89e95c7e782a7fe502a71abbd8bc8b  
 **Calibrated Confidence Score:** None
 
 ---
@@ -61,7 +61,7 @@ GROUP BY event
 ORDER BY event_count DESC
 ```
 
-🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/ab95da697de63f6336d9045ba0073251
+🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/ec89e95c7e782a7fe502a71abbd8bc8b
 📄 `outputs/submission/06_unseen/insight_report.md`
 
 ---

@@ -1,9 +1,9 @@
 {
   "spec_id": "03_status_sharing",
   "table_name": "status_sharing_events",
-  "timestamp": "2026-08-02T03:39:52.994048+00:00",
-  "trace_id": "9b197ccaca26e2488a09a125376a557a",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/dc5089cf7de782e3e7f36328494a28dc",
+  "timestamp": "2026-08-02T03:56:11.415836+00:00",
+  "trace_id": "5ab251e4a0cde1dea807872e252df016",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/e5a553e2d8e50d4e63c6de8bcaa990c7",
   "run_mode": "live_run",
   "strategy": "CREATE",
   "strategy_why": "",
@@ -104,7 +104,7 @@
       },
       "output": {
         "status": "synced",
-        "live_tables_found": 15,
+        "live_tables_found": 16,
         "tables": [
           "abandoned_checkout_recovery",
           "application_started",
@@ -116,6 +116,7 @@
           "group_applications",
           "group_family",
           "group_family_applications",
+          "instant_forex_orders",
           "landing_page_scrolled",
           "pay_now_clicked",
           "promo_coupon_checkout",

@@ -1,15 +1,15 @@
 # CUJ 1 Ingestion Run Report — `05_instant_forex`
 
 - **Target Table:** `instant_forex_orders`
-- **Execution Timestamp:** `2026-08-02T03:41:25.414835+00:00`
-- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/d4987875c8a6fd20d13860f05f969735
+- **Execution Timestamp:** `2026-08-02T03:57:48.559096+00:00`
+- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/09e85835b2da67af293d072f9bd7472d
 - **Run Mode:** `live_run`
 
 ---
 
 ## 1. What was decided
 
-- **Strategy:** `CREATE`
+- **Strategy:** `EVOLVE`
 - **Rationale:** 
 
 ---
@@ -98,7 +98,7 @@ app-open / web visit. This is the headline number reported to leadership.; Denom
 
 - **DDL Execution:** `ok`
 - **Rows Loaded:** **6,237** rows from `events.ndjson`
-- **Schema Registry Version:** `1`
+- **Schema Registry Version:** `2`
 - **Context Upserts:** `17` entries
 
 ---
@@ -107,13 +107,13 @@ app-open / web visit. This is the headline number reported to leadership.; Denom
 
 1. **context_agent::refresh_chdb_from_live** (context_agent): refreshed live ClickHouse catalog (8 tables present; drift: False)
 2. **context_agent::build_context_package** (context_agent): assembled existing table shapes from schema_registry and business metrics/rules from business_context
-3. **context_agent::decide_strategy** (context_agent): strategy decided: CREATE
+3. **context_agent::decide_strategy** (context_agent): strategy decided: EVOLVE
 4. **instrumentation_agent::design_schema** (instrumentation_agent): led ordering with (timestamp, user_id) for temporal granule pruning, partitioned monthly toYYYYMM, and mapped nested event fields
 5. **query_architect::design_to_ddl** (query_architect): rendered design intent into ClickHouse MergeTree DDL, SummingMergeTree MV, and JSONEachRow INSERT
 6. **validator::invariant_check** (validator): verified 4 ClickHouse invariants (violations: 0)
 7. **context_agent::context_diff** (context_agent): audited context: 17 additions, 3 conflicts, 6 gaps
 8. **context_agent::execute_ddl** (context_agent): executed CREATE TABLE and CREATE MATERIALIZED VIEW on ClickHouse Cloud with rollback guarantee
 9. **context_agent::load_events** (context_agent): loaded 6,237 events from events.ndjson into ClickHouse Cloud table instant_forex_orders
-10. **context_agent::register_schema_version** (context_agent): registered table 'instant_forex_orders' version 1 in schema_registry
+10. **context_agent::register_schema_version** (context_agent): registered table 'instant_forex_orders' version 2 in schema_registry
 11. **context_agent::sync_context** (context_agent): upserted 17 attributes into business_context and context_changelog with trace attribution
 12. **context_agent::write_table_semantics** (context_agent): wrote table description, concepts, and embedding (0 dims) for instant_forex_orders into chDB table_semantics (v1)

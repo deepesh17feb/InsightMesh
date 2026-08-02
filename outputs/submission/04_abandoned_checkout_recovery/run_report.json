@@ -1,16 +1,16 @@
 {
   "spec_id": "04_abandoned_checkout_recovery",
   "table_name": "abandoned_checkout_recovery",
-  "timestamp": "2026-08-02T03:40:34.701222+00:00",
-  "trace_id": "d27b207392a841b3fe8364717d229fbd",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/362c9f9706c1cc49952738ca62d50ba6",
+  "timestamp": "2026-08-02T03:56:57.745514+00:00",
+  "trace_id": "a7e7af3878a96a1b2274894ba66c87b5",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/3159b563000be54fb75a9059211f5134",
   "run_mode": "live_run",
-  "strategy": "CREATE",
+  "strategy": "EVOLVE",
   "strategy_why": "",
   "ddl": "CREATE TABLE IF NOT EXISTS abandoned_checkout_recovery (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    drop_step LowCardinality(String),\n    channel LowCardinality(String),\n    hours_since_drop Nullable(Int64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
   "mv_ddl": "-- justification: daily segment rollup for accelerated dashboard query execution\nCREATE MATERIALIZED VIEW IF NOT EXISTS abandoned_checkout_recovery_daily_mv\nENGINE = SummingMergeTree\nPARTITION BY toYYYYMM(date)\nORDER BY (device_type, os, geoip_country_code, destination, channel, date, event)\nAS SELECT\n    toYYYYMMDD(timestamp) AS date,\n    device_type, os, geoip_country_code, destination, channel, event,\n    count() AS total_events,\n    uniqState(user_id) AS unique_users\nFROM abandoned_checkout_recovery\nGROUP BY device_type, os, geoip_country_code, destination, channel, date, event;",
   "rows_loaded": 5919,
-  "schema_version": 1,
+  "schema_version": 2,
   "field_mapping": {
     "event": "event",
     "id": "id",
@@ -96,7 +96,7 @@
       },
       "output": {
         "status": "synced",
-        "live_tables_found": 15,
+        "live_tables_found": 16,
         "tables": [
           "abandoned_checkout_recovery",
           "application_started",
@@ -108,6 +108,7 @@
           "group_applications",
           "group_family",
           "group_family_applications",
+          "instant_forex_orders",
           "landing_page_scrolled",
           "pay_now_clicked",
           "promo_coupon_checkout",
@@ -131,7 +132,7 @@
     {
       "step": "context_agent::decide_strategy",
       "agent": "context_agent",
-      "why": "strategy decided: CREATE",
+      "why": "strategy decided: EVOLVE",
       "input": {
         "table": "abandoned_checkout_recovery",
         "columns": [
@@ -153,9 +154,9 @@
         ]
       },
       "output": {
-        "strategy": "CREATE",
-        "reason": "Table `abandoned_checkout_recovery` has no prior version registered in schema_registry. Proposing clean CREATE TABLE DDL.",
-        "target_version": 1
+        "strategy": "EVOLVE",
+        "reason": "Table `abandoned_checkout_recovery` previously registered at version 1. Proposing backward-compatible schema evolution.",
+        "target_version": 2
       }
     },
     {
@@ -301,7 +302,7 @@
       "output": {
         "status": "ok",
         "table": "abandoned_checkout_recovery",
-        "version": 1,
+        "version": 2,
         "error": null
       }
     },
@@ -323,13 +324,13 @@
     {
       "step": "context_agent::register_schema_version",
       "agent": "context_agent",
-      "why": "registered table 'abandoned_checkout_recovery' version 1 in schema_registry",
+      "why": "registered table 'abandoned_checkout_recovery' version 2 in schema_registry",
       "input": {
         "table": "abandoned_checkout_recovery",
-        "version": 1
+        "version": 2
       },
       "output": {
-        "version": 1
+        "version": 2
       }
     },
     {

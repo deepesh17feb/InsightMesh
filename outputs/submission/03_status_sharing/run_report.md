@@ -1,8 +1,8 @@
 # CUJ 1 Ingestion Run Report — `03_status_sharing`
 
 - **Target Table:** `status_sharing_events`
-- **Execution Timestamp:** `2026-08-02T03:39:52.993952+00:00`
-- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/dc5089cf7de782e3e7f36328494a28dc
+- **Execution Timestamp:** `2026-08-02T03:56:11.415777+00:00`
+- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/e5a553e2d8e50d4e63c6de8bcaa990c7
 - **Run Mode:** `live_run`
 
 ---

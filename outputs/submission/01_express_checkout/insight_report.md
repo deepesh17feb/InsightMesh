@@ -2,8 +2,8 @@
 
 **Diagnostic Question:** What is the checkout conversion rate for users who entered express checkout, broken down by device type and payment method?  
 **Target Table:** `None`  
-**Evaluation Timestamp:** 2026-08-02T03:38:43.074891+00:00  
-**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/2a79f67035391de4f8e5f5b098aa0b70  
+**Evaluation Timestamp:** 2026-08-02T03:55:03.517261+00:00  
+**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/1f552c04e3c1dcc47c74fa80e847ae5b  
 **Calibrated Confidence Score:** None
 
 ---
@@ -49,10 +49,10 @@ GROUP BY device_type, geoip_country_code
 ORDER BY total_events DESC LIMIT 5
 ```
 
-🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/2a79f67035391de4f8e5f5b098aa0b70
+🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/1f552c04e3c1dcc47c74fa80e847ae5b
 📄 `outputs/submission/01_express_checkout/insight_report.md`
 
-<!-- atlys:insight table=express_checkout metric=conversion_rate finding_key=express_checkout::conversion_rate::device_type::ios trace=2a79f67035391de4f8e5f5b098aa0b70 -->
+<!-- atlys:insight table=express_checkout metric=conversion_rate finding_key=express_checkout::conversion_rate::device_type::ios trace=1f552c04e3c1dcc47c74fa80e847ae5b -->
 
 ---
 

@@ -1,16 +1,16 @@
 {
   "spec_id": "01_express_checkout",
   "table_name": "express_checkout",
-  "timestamp": "2026-08-02T03:38:24.325446+00:00",
-  "trace_id": "f67b8ddd5e0e007d8a8664fadce7d713",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/4b3d8a73256ab28cf260f8981f13eecd",
+  "timestamp": "2026-08-02T03:54:44.129290+00:00",
+  "trace_id": "5505f356b60a91cb14b6fe54a6254efc",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/a06ce35aa0253bff3b63ce93a4a6d910",
   "run_mode": "live_run",
-  "strategy": "CREATE",
+  "strategy": "EVOLVE",
   "strategy_why": "",
   "ddl": "CREATE TABLE IF NOT EXISTS express_checkout (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    eligible UInt8,\n    shown_amount Nullable(Float64),\n    currency LowCardinality(String),\n    saved_method_type LowCardinality(String),\n    otp_attempts Nullable(Int64),\n    otp_success UInt8,\n    payment_amount Nullable(Float64),\n    payment_currency LowCardinality(String),\n    payment_latency_ms Nullable(Int64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
   "mv_ddl": "-- justification: daily segment rollup for accelerated dashboard query execution\nCREATE MATERIALIZED VIEW IF NOT EXISTS express_checkout_daily_mv\nENGINE = SummingMergeTree\nPARTITION BY toYYYYMM(date)\nORDER BY (device_type, os, geoip_country_code, destination, date, event)\nAS SELECT\n    toYYYYMMDD(timestamp) AS date,\n    device_type, os, geoip_country_code, destination, event,\n    count() AS total_events,\n    uniqState(user_id) AS unique_users\nFROM express_checkout\nGROUP BY device_type, os, geoip_country_code, destination, date, event;",
   "rows_loaded": 5507,
-  "schema_version": 1,
+  "schema_version": 2,
   "field_mapping": {
     "event": "event",
     "id": "id",
@@ -119,7 +119,7 @@
       },
       "output": {
         "status": "synced",
-        "live_tables_found": 14,
+        "live_tables_found": 16,
         "tables": [
           "abandoned_checkout_recovery",
           "application_started",
@@ -128,8 +128,10 @@
           "destination_card_clicked",
           "document_uploaded",
           "express_checkout",
+          "group_applications",
           "group_family",
           "group_family_applications",
+          "instant_forex_orders",
           "landing_page_scrolled",
           "pay_now_clicked",
           "promo_coupon_checkout",
@@ -153,7 +155,7 @@
     {
       "step": "context_agent::decide_strategy",
       "agent": "context_agent",
-      "why": "strategy decided: CREATE",
+      "why": "strategy decided: EVOLVE",
       "input": {
         "table": "express_checkout",
         "columns": [
@@ -181,9 +183,9 @@
         ]
       },
       "output": {
-        "strategy": "CREATE",
-        "reason": "Table `express_checkout` has no prior version registered in schema_registry. Proposing clean CREATE TABLE DDL.",
-        "target_version": 1
+        "strategy": "EVOLVE",
+        "reason": "Table `express_checkout` previously registered at version 1. Proposing backward-compatible schema evolution.",
+        "target_version": 2
       }
     },
     {
@@ -358,7 +360,7 @@
       "output": {
         "status": "ok",
         "table": "express_checkout",
-        "version": 1,
+        "version": 2,
         "error": null
       }
     },
@@ -380,13 +382,13 @@
     {
       "step": "context_agent::register_schema_version",
       "agent": "context_agent",
-      "why": "registered table 'express_checkout' version 1 in schema_registry",
+      "why": "registered table 'express_checkout' version 2 in schema_registry",
       "input": {
         "table": "express_checkout",
-        "version": 1
+        "version": 2
       },
       "output": {
-        "version": 1
+        "version": 2
       }
     },
     {

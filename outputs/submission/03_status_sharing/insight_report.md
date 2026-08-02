@@ -2,8 +2,8 @@
 
 **Diagnostic Question:** What is the share rate and referral conversion of status sharing links by channel and destination?  
 **Target Table:** `None`  
-**Evaluation Timestamp:** 2026-08-02T03:40:11.421783+00:00  
-**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/78f2ab89337fa7e6d4cab23f1abc1a05  
+**Evaluation Timestamp:** 2026-08-02T03:56:31.341576+00:00  
+**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/facae71d12671911844267f332e97583  
 **Calibrated Confidence Score:** None
 
 ---
@@ -25,7 +25,7 @@
 - payment latency at the confirmation step
 
 No query was run and no number was estimated.
-🔍 Trace: https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/78f2ab89337fa7e6d4cab23f1abc1a05
+🔍 Trace: https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/facae71d12671911844267f332e97583
 
 ---
 
