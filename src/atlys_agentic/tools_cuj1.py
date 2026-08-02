@@ -157,7 +157,7 @@ GROUP BY {dims_group}date, {funnel_step_column};"""
 def Tool_Consult_Internal_Tables(spec_id: str, new_columns: list[str], table_name: str) -> dict:
     """Consult context layer tables (schema_registry, business_context) to check context."""
     schema_history = chdb_client.run(
-        f"SELECT * FROM schema_registry WHERE \"table\" = '{table_name}' OR table_name = '{table_name}' ORDER BY version DESC"
+        f"SELECT * FROM schema_registry WHERE \"table\" = '{table_name}' ORDER BY version DESC"
     )
 
     if not schema_history:
@@ -296,7 +296,7 @@ def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str, dry_run: bool = Fa
     # Record to schema_registry
     cols = _columns_from_ddl(ddl)
     existing = chdb_client.run(
-        f"SELECT max(version) AS v FROM schema_registry WHERE \"table\" = '{table_name}' OR table_name = '{table_name}'"
+        f"SELECT max(version) AS v FROM schema_registry WHERE \"table\" = '{table_name}'"
     )
     new_ver = (existing[0].get("v", 0) + 1) if (existing and existing[0].get("v") is not None) else 1
 

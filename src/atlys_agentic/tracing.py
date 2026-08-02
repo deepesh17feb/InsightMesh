@@ -47,6 +47,22 @@ def format_span_name(name: str, run_mode: str | None = None) -> str:
     return f"{mode}::{name}"
 
 
+def init_litellm_callbacks() -> None:
+    """Initialize LiteLLM Langfuse callbacks so LLM calls from CrewAI / LiteLLM are tracked."""
+    try:
+        import litellm
+        if not hasattr(litellm, "success_callback") or litellm.success_callback is None:
+            litellm.success_callback = []
+        if not hasattr(litellm, "failure_callback") or litellm.failure_callback is None:
+            litellm.failure_callback = []
+        if "langfuse" not in litellm.success_callback:
+            litellm.success_callback.append("langfuse")
+        if "langfuse" not in litellm.failure_callback:
+            litellm.failure_callback.append("langfuse")
+    except Exception:
+        pass
+
+
 def client() -> Langfuse:
     """Return explicit Langfuse v4 client initialized from environment."""
     global _client
@@ -55,6 +71,7 @@ def client() -> Langfuse:
         sk = os.environ.get("LANGFUSE_SECRET_KEY")
         host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
         _client = Langfuse(public_key=pk, secret_key=sk, host=host)
+        init_litellm_callbacks()
     return _client
 
 
@@ -72,9 +89,15 @@ _current_trace_url: str | None = None
 
 
 @contextmanager
-def trace(name: str, input: dict | None = None, metadata: dict | None = None, run_mode: str | None = None):
-    """Root span for one pipeline run (one ingestion, one analysis question).
-    Everything nested inside via step() becomes part of the same trace."""
+def trace(
+    name: str,
+    input: dict | None = None,
+    metadata: dict | None = None,
+    run_mode: str | None = None,
+    as_type: str = "chain",
+):
+    """Root observation (Chain) for one pipeline run (one ingestion, one analysis question).
+    Everything nested inside via step(), span(), or generation() becomes part of the same trace tree."""
     global _current_trace_id, _current_trace_url
     mode = resolve_run_mode(run_mode)
     formatted_name = format_span_name(name, mode)
@@ -83,16 +106,22 @@ def trace(name: str, input: dict | None = None, metadata: dict | None = None, ru
 
     c = client()
     with c.start_as_current_observation(
-        name=formatted_name, as_type="span", input=input or {}, metadata=meta
-    ) as span:
+        name=formatted_name, as_type=as_type, input=input or {}, metadata=meta
+    ) as span_obj:
         _current_trace_id = c.get_current_trace_id()
         _current_trace_url = c.get_trace_url(trace_id=_current_trace_id) if _current_trace_id else None
-        yield span
+        yield span_obj
     c.flush()
 
 
 @contextmanager
-def step(name: str, input: dict | None = None, metadata: dict | None = None, run_mode: str | None = None):
+def step(
+    name: str,
+    input: dict | None = None,
+    metadata: dict | None = None,
+    run_mode: str | None = None,
+    as_type: str = "tool",
+):
     """One agent step / tool call / SQL statement / context source, nested
     under whichever trace() is currently active. Call `span.update(output=...)`
     inside the block once the result is known."""
@@ -103,9 +132,9 @@ def step(name: str, input: dict | None = None, metadata: dict | None = None, run
 
     c = client()
     with c.start_as_current_observation(
-        name=formatted_name, as_type="span", input=input or {}, metadata=meta
-    ) as span:
-        yield span
+        name=formatted_name, as_type=as_type, input=input or {}, metadata=meta
+    ) as span_obj:
+        yield span_obj
 
 
 def generation(
@@ -117,7 +146,7 @@ def generation(
     metadata: dict | None = None,
     run_mode: str | None = None,
 ) -> None:
-    """Record an LLM generation observation in Langfuse."""
+    """Record an LLM generation observation in Langfuse under the active trace context."""
     mode = resolve_run_mode(run_mode)
     formatted_name = format_span_name(name, mode)
     meta = (metadata or {}).copy()
@@ -151,19 +180,29 @@ def trace_url() -> str | None:
 
 
 def new_trace(spec_id: str, run_mode: str | None = None) -> str:
-    """Create a new trace id tagged with spec_id and run_mode (test_run | live_run | dry_run)."""
+    """Return or generate a valid trace ID tagged with spec_id and run_mode."""
     global _current_trace_id, _current_trace_url
     mode = resolve_run_mode(run_mode)
     trace_name = f"clickathon-{mode}-{spec_id}"
     try:
         c = client()
-        if hasattr(c, "trace"):
+        if hasattr(c, "trace") and callable(getattr(c, "trace")):
             t = c.trace(name=trace_name, tags=[spec_id, mode])
             _current_trace_id = getattr(t, "id", str(t))
+            _current_trace_url = c.get_trace_url(trace_id=_current_trace_id) if hasattr(c, "get_trace_url") else None
+            return _current_trace_id
+        active_id = c.get_current_trace_id() if hasattr(c, "get_current_trace_id") else None
+        if active_id:
+            _current_trace_id = active_id
+            _current_trace_url = c.get_trace_url(trace_id=_current_trace_id)
+            return _current_trace_id
+        if hasattr(c, "create_trace_id"):
+            _current_trace_id = c.create_trace_id()
             _current_trace_url = c.get_trace_url(trace_id=_current_trace_id)
             return _current_trace_id
     except Exception:
         pass
+    import uuid
     _current_trace_id = f"trace-{mode}-{spec_id}"
     return _current_trace_id
 
@@ -175,8 +214,9 @@ def span(
     output: dict,
     metadata: dict | None = None,
     run_mode: str | None = None,
+    as_type: str = "tool",
 ) -> None:
-    """Record a span with input/output under the trace, prefixed by run mode."""
+    """Record an observation with input/output under the active trace context."""
     mode = resolve_run_mode(run_mode)
     formatted_name = format_span_name(name, mode)
     meta = (metadata or {}).copy()
@@ -184,12 +224,14 @@ def span(
 
     try:
         c = client()
-        if hasattr(c, "span"):
+        if hasattr(c, "span") and callable(getattr(c, "span")):
             c.span(trace_id=trace_id, name=formatted_name, input=input, output=output, metadata=meta)
-        else:
-            with c.start_as_current_observation(name=formatted_name, as_type="span", input=input, metadata=meta) as s:
-                if hasattr(s, "update"):
-                    s.update(output=output)
+            return
+        with c.start_as_current_observation(name=formatted_name, as_type=as_type, input=input, metadata=meta) as s:
+            if hasattr(s, "update"):
+                s.update(output=output)
     except Exception:
         pass
+
+
 

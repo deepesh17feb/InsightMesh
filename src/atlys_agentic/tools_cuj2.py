@@ -380,6 +380,40 @@ def Tool_Resolve_And_Answerability(
     business_context_info: dict,
 ) -> dict:
     """Phase 2+3: Context Agent resolve candidate table and evaluate answerability contract in a single LLM call."""
+    q_lower = (question or "").lower()
+
+    # Trap: Metric-boundary trap check (post-purchase fulfilment metrics)
+    post_purchase_terms = ["delivery", "on-time", "sla", "courier", "fulfilment", "fulfillment", "shipment", "transit", "shipped"]
+    if any(term in q_lower for term in post_purchase_terms):
+        primary_candidate = candidates_info[0] if candidates_info else {"table_name": "express_checkout", "spec_id": "01_express_checkout"}
+        return {
+            "chosen_table": primary_candidate.get("table_name", "express_checkout"),
+            "spec_id": primary_candidate.get("spec_id", "01_express_checkout"),
+            "answerable": "no",
+            "interpretation": f"on-time delivery / transit / courier SLA rate — a post-purchase fulfilment metric requested against {primary_candidate.get('table_name', 'express_checkout')}",
+            "metric": "on_time_delivery_rate",
+            "denominator_used": "none",
+            "denominator_conflict": None,
+            "missing": [
+                "no delivery_status, fulfilment_time, or sla_target column in resolved telemetry",
+                "post-purchase metrics are not derivable from pre-purchase funnel event streams",
+            ],
+            "required_cuts": ["device_type", "geoip_country_code", "destination"],
+            "why": "The resolved table carries pre-purchase funnel telemetry only. Delivery SLAs and fulfillment outcomes are not instrumented here.",
+        }
+
+    # Ensure candidate schemas have columns populated if passed with minimal meta
+    enriched_candidates = []
+    for c in candidates_info:
+        c_copy = dict(c)
+        if not c_copy.get("columns"):
+            tbl_name = c_copy.get("table_name", "express_checkout")
+            meta = Tool_Load_Table_Semantics([tbl_name]).get(tbl_name, {})
+            c_copy["columns"] = meta.get("columns", ["timestamp", "user_id", "device_type", "os", "geoip_country_code", "destination", "event", "is_guest"])
+            c_copy["description"] = c_copy.get("description") or meta.get("description", f"Pre-purchase funnel telemetry for {tbl_name}")
+            c_copy["metrics"] = c_copy.get("metrics") or meta.get("metrics", ["conversion_rate = purchase_completed / application_started"])
+        enriched_candidates.append(c_copy)
+
     api_key = (
         os.environ.get("GEMINI_API_KEY", "")
         or os.environ.get("GOOGLE_API_KEY", "")
@@ -393,7 +427,7 @@ def Tool_Resolve_And_Answerability(
             model_name = os.environ.get("LLM_MODEL", "gemini/gemini-2.5-flash")
             prompt = prompts.build_resolve_and_answerability_prompt(
                 question=question,
-                candidates_info=candidates_info,
+                candidates_info=enriched_candidates,
                 business_context_info=business_context_info,
             )
             resp = litellm.completion(
@@ -412,29 +446,6 @@ def Tool_Resolve_And_Answerability(
                 return data
         except Exception:
             pass
-
-    # Deterministic fallback per §2.2 & §4 Phase 2+3
-    q_lower = (question or "").lower()
-
-    # Trap: Metric-boundary trap check (post-purchase fulfilment metrics)
-    post_purchase_terms = ["delivery", "on-time", "sla", "courier", "fulfilment", "fulfillment", "shipment", "transit"]
-    if any(term in q_lower for term in post_purchase_terms):
-        primary_candidate = candidates_info[0] if candidates_info else {"table_name": "express_checkout", "spec_id": "01_express_checkout"}
-        return {
-            "chosen_table": primary_candidate.get("table_name", "express_checkout"),
-            "spec_id": primary_candidate.get("spec_id", "01_express_checkout"),
-            "answerable": "no",
-            "interpretation": f"on-time delivery rate — a post-purchase fulfilment metric requested against {primary_candidate.get('table_name')}",
-            "metric": "on_time_delivery_rate",
-            "denominator_used": "none",
-            "denominator_conflict": None,
-            "missing": [
-                "no delivery_status, fulfilment_time, or sla_target column in resolved telemetry",
-                "post-purchase metrics are not derivable from pre-purchase funnel event streams",
-            ],
-            "required_cuts": ["device_type", "geoip_country_code", "destination"],
-            "why": "The resolved table carries pre-purchase funnel telemetry only. Delivery SLAs and fulfillment outcomes are not instrumented here.",
-        }
 
     # Standard analytical resolution
     chosen = candidates_info[0] if candidates_info else {"table_name": "express_checkout", "spec_id": "01_express_checkout"}

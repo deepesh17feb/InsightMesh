@@ -1,7 +1,23 @@
 import json
 import re
 import sqlite3
+import threading
 from pathlib import Path
+
+_chdb_lock = threading.Lock()
+_chdb_session = None
+
+
+def _get_chdb_session():
+    global _chdb_session
+    if _chdb_session is None:
+        try:
+            import chdb.session
+            paths.CHDB_PATH.mkdir(parents=True, exist_ok=True)
+            _chdb_session = chdb.session.Session(str(paths.CHDB_PATH))
+        except Exception:
+            _chdb_session = None
+    return _chdb_session
 
 from atlys_agentic import paths
 
@@ -147,7 +163,10 @@ def _run_sqlite_fallback(sql: str, fmt: str = "JSON"):
     clean = re.sub(r"^\s*TRUNCATE\s+TABLE\s+(\w+)", r"DELETE FROM \1", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bnow\(\)", "datetime('now')", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bcount\(\)", "count(*)", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"^\s*INSERT\s+INTO\s+business_context\s+VALUES\s*\(\s*'", "INSERT INTO business_context (section, key, definition, version, valid_from) VALUES ('", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bWHERE\s+table\b", 'WHERE "table"', clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\bWHERE\s+table_name\b", 'WHERE "table"', clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\bOR\s+table_name\b", 'OR "table"', clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bSELECT\s+table\b", 'SELECT "table"', clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bORDER\s+BY\s+table\b", 'ORDER BY "table"', clean, flags=re.IGNORECASE)
     # Convert unquoted float array literal e.g. [0.123, -0.456] into string '[0.123, -0.456]'

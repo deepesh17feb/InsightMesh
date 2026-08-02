@@ -214,29 +214,31 @@ def Tool_Score_Confidence(
 
 
 def Tool_Validate_Invariants(ddl: str) -> list[str]:
-    """Validate ClickHouse 6-pillar storage invariants."""
+    """Validate ClickHouse 4 critical storage invariants."""
     violations = []
-    ddl_upper = ddl.upper()
+    ddl_clean = re.sub(r"--.*$", "", ddl, flags=re.MULTILINE)
 
-    if "ORDER BY" not in ddl_upper:
-        violations.append("Violation: Missing ORDER BY clause")
+    # 1. Check for ORDER BY and sort-key prefix invariants
+    order_match = re.search(r"ORDER BY\s*\((.*?)\)", ddl_clean, re.IGNORECASE)
+    if not order_match:
+        order_match = re.search(r"ORDER BY\s+([^\n;]+)", ddl_clean, re.IGNORECASE)
 
-    if "SETTINGS" not in ddl_upper:
-        violations.append("Violation: Missing SETTINGS clause")
-
-    if "PARTITION BY" not in ddl_upper and "PARTITION" not in ddl_upper:
-        violations.append("Violation: Missing PARTITION BY clause")
-
-    order_match = re.search(r"ORDER BY\s*\((.*?)\)", ddl, re.IGNORECASE)
     if order_match:
-        order_cols = [c.strip() for c in order_match.group(1).split(",")]
-        low_card_prefix = False
-        for c in order_cols:
-            if any(lc in c.lower() for lc in ["device", "status", "country", "type", "os"]):
-                low_card_prefix = True
-                break
-        if not low_card_prefix and len(order_cols) > 0:
-            violations.append("Warning: Primary sort key should begin with low-to-medium cardinality prefix")
+        first_col = order_match.group(1).split(",")[0].strip().lower()
+        if first_col == "id" or (first_col.endswith("_id") and first_col not in ["user_id", "session_id", "application_id"]):
+            violations.append("Violation: Primary sort key begins with 'id' or entity ID.")
+        elif "uuid" in first_col:
+            violations.append("Violation: Primary sort key begins with a UUID column.")
+    else:
+        violations.append("Violation: ORDER BY clause is missing.")
+
+    # 2. Check for PARTITION BY
+    if not re.search(r"\bPARTITION\s+BY\b", ddl_clean, re.IGNORECASE):
+        violations.append("Violation: PARTITION BY clause is missing.")
+
+    # 3. Check for TTL on event tables
+    if ("user_id" in ddl_clean or "application_id" in ddl_clean or "event" in ddl_clean) and not re.search(r"\bTTL\b", ddl_clean, re.IGNORECASE):
+        violations.append("Violation: TTL clause is missing.")
 
     return violations
 
