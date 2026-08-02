@@ -1,0 +1,12 @@
+{
+  "spec_id": "04_abandoned_checkout_recovery",
+  "table_name": null,
+  "question": "What is the recovery conversion rate of abandoned checkout reminders by notification channel and discount tier?",
+  "timestamp": "2026-08-02T03:41:03.732494+00:00",
+  "trace_id": "53f8c1c88f5f2c2e9fadf16830648297",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/53f8c1c88f5f2c2e9fadf16830648297",
+  "confidence_score": null,
+  "answerability": null,
+  "signals": [],
+  "planned_queries": []
+}

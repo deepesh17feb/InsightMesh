@@ -223,6 +223,9 @@ __marimo__/
 # Atlys agentic runtime data & chDB session storage
 outputs/
 **/outputs/
+!outputs/submission/
+!outputs/submission/**
+!outputs/submission_summary.json
 chdb_data/
 **/chdb_data/
 **/chdb_data/**

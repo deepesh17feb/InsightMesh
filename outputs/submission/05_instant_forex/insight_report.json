@@ -1,0 +1,12 @@
+{
+  "spec_id": "05_instant_forex",
+  "table_name": null,
+  "question": "What is the attach rate and revenue impact of Instant Forex across different visa applicant destinations?",
+  "timestamp": "2026-08-02T03:42:01.894399+00:00",
+  "trace_id": "1ac5d56bdab7cd6d2791f93a155c81de",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/1ac5d56bdab7cd6d2791f93a155c81de",
+  "confidence_score": null,
+  "answerability": null,
+  "signals": [],
+  "planned_queries": []
+}
