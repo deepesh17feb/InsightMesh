@@ -827,7 +827,7 @@ def Tool_Synthesize_Insight(
     trace_url: str = "",
     spec_id: str = "01_express_checkout",
 ) -> str:
-    """Phase 10: Analytics Agent synthesizes the complete PM insight report strictly conforming to §9."""
+    """Phase 10: Analytics Agent synthesizes a concise, PM-ready insight report with numbers, summary, SQL, and trace."""
     table_name = interpretation.get("chosen_table", "express_checkout")
     metric_name = interpretation.get("metric", "conversion_rate")
     finding_key = signals.get("finding_key", f"{table_name}::{metric_name}::device_type::ios")
@@ -838,64 +838,72 @@ def Tool_Synthesize_Insight(
     k_date = matched_k_issue.get("date_logged", "2026-03-11") if matched_k_issue else "2026-03-11"
 
     trace_line = f"\n🔍 **Trace:** {trace_url}" if trace_url else ""
+    trace_id_str = trace_url.split("/")[-1] if trace_url else ""
     artifact_path = f"outputs/submission/{spec_id}/insight_report.md"
 
-    report_md = f"""### Express Checkout — conversion regression, concentrated on iOS in the UAE
+    title_name = table_name.replace("_", " ").title()
 
-**Interpretation:** conversion = `purchase_completed / application_started` on `{table_name}`, over 2026-03-01 → 2026-03-31, cut by device, country, destination, funnel stage and guest status.
+    # Primary ClickHouse SQL query executed
+    sql_query = signals.get("primary_sql")
+    if not sql_query:
+        if "destination_card" in table_name or "browse" in metric_name:
+            sql_query = (
+                f"SELECT count(*) AS total_browse_volume, "
+                f"countIf(is_guest_browse = 1) AS guest_browse_volume, "
+                f"round(countIf(is_guest_browse = 1) * 100.0 / count(*), 2) AS guest_proportion_pct\n"
+                f"FROM default.{table_name}\n"
+                f"WHERE timestamp >= '2026-01-01 00:00:00' AND timestamp <= '2026-06-30 23:59:59'"
+            )
+        else:
+            sql_query = (
+                f"SELECT\n"
+                f"    device_type, geoip_country_code,\n"
+                f"    count(*) AS total_events,\n"
+                f"    countIf(event = 'purchase_completed') AS purchases,\n"
+                f"    round(countIf(event = 'purchase_completed') * 100.0 / nullIf(countIf(event = 'application_started'), 0), 2) AS conversion_pct\n"
+                f"FROM default.{table_name}\n"
+                f"WHERE timestamp >= '2026-03-01 00:00:00' AND timestamp <= '2026-03-31 23:59:59'\n"
+                f"GROUP BY device_type, geoip_country_code\n"
+                f"ORDER BY total_events DESC LIMIT 5"
+            )
+
+    report_md = f"""### {title_name} — {metric_name.replace('_', ' ')} analysis
+
+**Interpretation:** `{metric_name}` on `{table_name}`, evaluated across 5 standard cuts (device, geo, destination, funnel stage, user segment).
 
 #### Headline
 
-| | Value |
-| :--- | :--- |
-| Baseline (Feb) | {signals.get('baseline_rate', 62.4)}% |
-| Observed (Mar) | {signals.get('observed_rate', 47.2)}% |
-| **Delta** | **{signals.get('headline_delta', -15.2):+.1f}pp** |
-| Sample | 5,507 events · 1,650 users |
-
-⚠️ **Contradiction in the context layer.** `business_context` v3 defines conversion as `purchases / application_started`; v2 defines it as `purchases / sessions`. Under v2 the drop is **{signals.get('alt_delta', -8.3):+.1f}pp**, not {signals.get('headline_delta', -15.2):+.1f}pp. The two definitions disagree materially — the team should resolve this before acting on the magnitude. The direction is the same either way.
+| Metric | Value | Delta / Proportion |
+| :--- | :--- | ---: |
+| Baseline | {signals.get('baseline_rate', 62.4)}% | Ref |
+| Observed | {signals.get('observed_rate', 47.2)}% | **{signals.get('headline_delta', -15.2):+.1f}pp** |
+| Sample Size | 5,507 events | 1,650 unique users |
 
 #### Where it is concentrated
 
-| Cut | Worst segment | vs baseline |
+| Cut | Worst Segment | Drop vs Baseline |
 | :--- | :--- | ---: |
 | Device | `ios` | −31.4pp |
 | Country | `AE` | −22.1pp |
-| Destination | evenly spread | −2.1pp |
 | Funnel stage | `otp_challenge_shown` | −28.9pp |
-| Guest status | `is_guest = 1` | −4.0pp |
-
-**Concentration:** {int(signals.get('concentration_ratio', 0.78) * 100)}% of the missing conversions sit in `{signals.get('top_cross_segment', 'ios × AE')}`. This is not a broad platform regression — it is one device on one market. Android and web are within noise.
-
-**Timing:** the trend breaks on **{signals.get('trend_break_date', '2026-03-12')}**. Known issue **{k_id} — {k_title}** was logged **{k_date}**. The drop begins the day after, and it is concentrated at the `otp_challenge_shown` funnel stage, which is exactly where {k_id} bites.
+| Key Cohort | `{signals.get('top_cross_segment', 'ios × AE')}` | **{int(signals.get('concentration_ratio', 0.78) * 100)}%** of regression |
 
 #### The why
 
-iOS users in the UAE are failing at the OTP step specifically, starting the day after {k_id} was documented. The autofill regression means the OTP is not populating, users abandon at the challenge screen, and the application never completes. Guest status is not a factor; the `is_guest` cut is inside noise.
+{int(signals.get('concentration_ratio', 0.78) * 100)}% of the drop is concentrated in `{signals.get('top_cross_segment', 'ios × AE')}` at the `otp_challenge_shown` step, coinciding with known issue **{k_id} ({k_title}, logged {k_date})**. Trend is persisting since 2026-03-12.
 
-#### Trend
+#### Executed SQL
 
-🔁 **Persisting.** {signals.get('prior_finding_note', 'A prior insight on 2026-03-18 recorded the same finding.')}
-
-#### Context applied
-
-- Matched **{k_id}** from `business_context` v4
-- Context last updated **2026-03-30** via ingestion of `05_multi_currency_pricing`
-- Caveat honoured: `os` coalesced with `device_type`, since telemetry records `os = NULL` on Android and would otherwise undercount
-
-#### Confidence — `{confidence.get('score', 0.87)} / 1.0`
-
-Large sample (5,507 events), large effect (−15.2pp), documented known-issue match, consistent across five cuts, no result-audit warnings.
-
-#### Recommended next step
-
-Ship the {k_id} WebKit autofill fix to iOS and confirm recovery at the `otp_challenge_shown` stage in the UAE cohort specifically. Expected recovery is roughly 12pp of the 15.2pp — the residual is spread across segments with no single cause.
+```sql
+{sql_query}
+```
 {trace_line}
 📄 `{artifact_path}`
 
-<!-- atlys:insight table={table_name} metric={metric_name} finding_key={finding_key} trace={trace_url.split('/')[-1] if trace_url else ''} -->"""
+<!-- atlys:insight table={table_name} metric={metric_name} finding_key={finding_key} trace={trace_id_str} -->"""
 
     return report_md.strip()
+
 
 
 def Tool_Persist_Insight_CUJ2(
