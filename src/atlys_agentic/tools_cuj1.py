@@ -277,12 +277,17 @@ def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str, dry_run: bool = Fa
     try:
         ch_client.command(ddl)
     except Exception as err:
+        try:
+            ch_client.select(f"DROP TABLE IF EXISTS {table_name}")
+        except Exception:
+            pass
         return {
-            "status": "failed",
+            "status": "rolled_back",
             "table": table_name,
             "version": 0,
             "error": str(err),
         }
+
 
 
     try:
