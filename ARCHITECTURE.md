@@ -398,4 +398,6 @@ Every Langfuse span recorded by InsightMesh adheres to a standardized contract:
   4. **LiteLLM Native Integration:** Enables automatic callbacks to Langfuse for request/response logging, token accounting, and cost tracking.
 
 ---
+*Video Link* https://github.com/deepesh17feb/InsightMesh/blob/main/Arch1.mov
+---
 *Created for the Click-a-thon 2026 Official Submission by Surfer AI.*
