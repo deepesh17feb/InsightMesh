@@ -73,10 +73,129 @@ def Tool_Analytics_Compute(query: PlannedQuery | str | dict, spec_id: str = "") 
     return {"query": sql, "rows": [], "count": 0, "engine": "fallback_empty"}
 
 
+BASE_TABLE_SEMANTICS: list[dict[str, str]] = [
+    {
+        "table_name": "destination_card_clicked",
+        "spec_id": "base_funnel",
+        "description": "Top-of-funnel destination browse and card click events where users view visa requirements. Contains is_guest_browse (1 for unauthenticated guest user, 0 for authenticated registered user), destination, device, co_travelers, card_type, flow, and traffic attribution.",
+        "concepts": "destination browse, destination card click, card clicked, browse volume, guest browse, is_guest_browse, unauthenticated guest, pre-purchase funnel, visa discovery, top of funnel, guest ratio",
+    },
+    {
+        "table_name": "application_started",
+        "spec_id": "base_funnel",
+        "description": "Stage 1 of the core visa funnel where a user initiates an application for a destination. Records application_id, destination, co-travelers, and visa_issuance_eta_days.",
+        "concepts": "application start, funnel start, visa application started, co-travelers, issuance eta, visa_issuance_eta_days, funnel stage 1",
+    },
+    {
+        "table_name": "document_uploaded",
+        "spec_id": "base_funnel",
+        "description": "Stage 2 of the core visa funnel. Captures KYC passport upload, camera vs gallery capture mode, retry_count, and failed-attempt threshold breaches (is_crossed_failed_attempt_threshold).",
+        "concepts": "document upload, passport upload, kyc document, passport capture quality, retry count, failed attempt threshold, capture mode, funnel stage 2",
+    },
+    {
+        "table_name": "pay_now_clicked",
+        "spec_id": "base_funnel",
+        "description": "Checkout initiation click where a user taps pay now. Tracks payment sheet trigger, payment method, currency, discount codes, and order amount before payment completion.",
+        "concepts": "pay now clicked, checkout initiation, payment sheet, checkout drop-off, payment method, checkout intent",
+    },
+    {
+        "table_name": "purchase_completed",
+        "spec_id": "base_funnel",
+        "description": "Stage 4 final stage of the pre-purchase funnel. Records successful payment conversion, total revenue, processing fee, coupon campaign realized value, aov, order_id, and currency.",
+        "concepts": "purchase completed, conversion, payment successful, order revenue, aov, discount amount, coupon realized value, paid application, funnel stage 4",
+    },
+    {
+        "table_name": "search_typed",
+        "spec_id": "base_funnel",
+        "description": "Search event where user types destination search terms. Records search query terms, zero-result states (is_zero_results), character length, and autocomplete interactions.",
+        "concepts": "destination search, search typed, top search terms, destination search terms, zero results, query length, search volume, destination_searched",
+    },
+    {
+        "table_name": "landing_page_scrolled",
+        "spec_id": "base_funnel",
+        "description": "Discovery feed and landing page scrolling behavior. Captures scroll depth percentage, impression count, and destination feed exploration before card click.",
+        "concepts": "landing page scrolled, feed scrolled, scroll depth, feed impressions, discovery feed exploration",
+    },
+    {
+        "table_name": "auth_completed",
+        "spec_id": "base_funnel",
+        "description": "Authentication and sign-in completion events. Tracks authentication method (phone otp, google oauth, email), is_new_user signup vs signin, and auth latency.",
+        "concepts": "user authenticated, auth completed, authentication method breakdown, sign in, sign up, new user, otp, oauth, phone auth",
+    },
+]
+
+
+def Tool_Bootstrap_Base_Semantics(force: bool = False) -> dict:
+    """Bootstrap foundation base tables and spec tables into chDB table_semantics and schema_registry at runtime."""
+    chdb_client.init_schema()
+    ddl_tables = paths.parse_ddl_tables()
+
+    existing_rows = chdb_client.run("SELECT DISTINCT table_name FROM table_semantics")
+    existing_tables = {r.get("table_name") for r in existing_rows if r.get("table_name")}
+
+    seeded_base = []
+    for item in BASE_TABLE_SEMANTICS:
+        tname = item["table_name"]
+        if force or tname not in existing_tables:
+            cols = ddl_tables.get(tname, {}).get("columns", [])
+            if not cols:
+                cols = ["id", "timestamp", "user_id", "application_id", "device_type", "destination", "is_guest_browse"]
+            Tool_Write_Table_Semantics(
+                spec_id=item["spec_id"],
+                table_name=tname,
+                spec_text=f"{item['description']}\nConcepts: {item['concepts']}",
+                column_names=cols,
+                agent="context_agent",
+            )
+            # Register base table in schema_registry as well
+            try:
+                cols_json = json.dumps(cols).replace("'", "''")
+                chdb_client.run(
+                    f"""INSERT INTO schema_registry VALUES
+                    ('{tname}', '{item["spec_id"]}', 1, 'MergeTree', '{cols_json}', '', now())""",
+                    fmt="CSV",
+                )
+            except Exception:
+                pass
+            seeded_base.append(tname)
+
+    # Seed spec tables if missing
+    available_specs = paths.available_spec_ids()
+    seeded_specs = []
+    for sid in available_specs:
+        tbl_name = sid.split("_", 1)[-1] if "_" in sid else sid
+        if force or tbl_name not in existing_tables:
+            spec_path = paths.SPECS_DIR / sid / "spec.md"
+            spec_text = spec_path.read_text(encoding="utf-8") if spec_path.exists() else ""
+            cols = []
+            events_file = paths.events_ndjson(sid)
+            if events_file.exists():
+                try:
+                    events = _load_events(events_file)
+                    if events:
+                        cols = list(_flatten(events[0]).keys())
+                except Exception:
+                    pass
+            Tool_Write_Table_Semantics(
+                spec_id=sid,
+                table_name=tbl_name,
+                spec_text=spec_text,
+                column_names=cols,
+                agent="context_agent",
+            )
+            seeded_specs.append(tbl_name)
+
+    return {
+        "status": "ok",
+        "seeded_base_tables": seeded_base,
+        "seeded_spec_tables": seeded_specs,
+    }
+
+
 def Tool_Semantic_Retrieval(
     question: str,
     top_k: int = 3,
-    threshold: float = 0.85,
+    threshold: float = 0.55,
 ) -> dict:
     """Phase 1a: Context Agent semantic retrieval over table_semantics (docs/CUJ2.md §4 Phase 1a).
     Embeds question, calculates cosineDistance over table_semantics, returns top-3 raw table candidates."""
@@ -101,37 +220,13 @@ def Tool_Semantic_Retrieval(
         if tname and tname not in table_engines:
             table_engines[tname] = "MergeTree"
 
+    # Ensure table_semantics contains base tables and spec tables
+    Tool_Bootstrap_Base_Semantics()
+
     # Read table_semantics rows from chDB
     semantics_rows = chdb_client.run(
         "SELECT table_name, spec_id, description, concepts, embedding, version FROM table_semantics"
     )
-
-    # Seed table_semantics from catalog if unpopulated
-    if not semantics_rows:
-        available_specs = paths.available_spec_ids()
-        for sid in available_specs:
-            tbl_name = sid.split("_", 1)[-1] if "_" in sid else sid
-            spec_path = paths.SPECS_DIR / sid / "spec.md"
-            spec_text = spec_path.read_text(encoding="utf-8") if spec_path.exists() else ""
-            cols = []
-            events_file = paths.events_ndjson(sid)
-            if events_file.exists():
-                try:
-                    events = _load_events(events_file)
-                    if events:
-                        cols = list(_flatten(events[0]).keys())
-                except Exception:
-                    pass
-            Tool_Write_Table_Semantics(
-                spec_id=sid,
-                table_name=tbl_name,
-                spec_text=spec_text,
-                column_names=cols,
-                agent="context_agent",
-            )
-        semantics_rows = chdb_client.run(
-            "SELECT table_name, spec_id, description, concepts, embedding, version FROM table_semantics"
-        )
 
     # Filter to raw tables only per §2.7 & §4
     raw_semantics = []
@@ -143,6 +238,7 @@ def Tool_Semantic_Retrieval(
 
     q_vec = embed_text(question)
     degraded_fallback = False
+
     candidates = []
     unranked_candidates = []
 
@@ -262,6 +358,12 @@ def Tool_Load_Table_Semantics(candidate_tables: list[str]) -> dict:
                     cols = _columns_from_ddl(r.get("ddl", ""))
             elif r.get("ddl"):
                 cols = _columns_from_ddl(r.get("ddl", ""))
+
+        if not cols:
+            ddl_tables = paths.parse_ddl_tables()
+            if tbl in ddl_tables:
+                cols = ddl_tables[tbl].get("columns", [])
+                spec_id = "base_funnel"
 
         if not cols:
             events_path = paths.events_ndjson(spec_id)

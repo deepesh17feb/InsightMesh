@@ -40,10 +40,18 @@ except ImportError:  # pragma: no cover
 
     from pydantic import BaseModel, Field
 
-from atlys_agentic import chdb_client, conversational_ingestion, paths, prompts, tracing
+from atlys_agentic import chdb_client, conversational_ingestion, paths, prompts, tools, tracing
 from atlys_agentic.flows import analysis_flow, ingestion_flow
 
 app = FastAPI(title="Atlys Agentic Analytics & Ingestion Service (LibreChat Integration)")
+
+# Runtime initialization: Bootstrap chDB schema and base table semantics
+try:
+    chdb_client.init_schema()
+    tools.Tool_Bootstrap_Base_Semantics()
+except Exception:
+    pass
+
 
 
 class ChatMessage(BaseModel):

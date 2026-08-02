@@ -61,3 +61,41 @@ def normalize_spec_id(spec_id: str) -> str:
             return sid
     return spec_id
 
+
+def parse_ddl_tables(ddl_path: Path | None = None) -> dict[str, dict]:
+    """Parse table names, column lists, and types from ddl.sql."""
+    import re
+    path = ddl_path or DDL_SQL
+    if not path.exists():
+        fallback = REPO_ROOT / "problem statment" / "data" / "ddl.sql"
+        if fallback.exists():
+            path = fallback
+        else:
+            return {}
+    content = path.read_text(encoding="utf-8")
+    tables = {}
+    table_blocks = re.findall(
+        r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_]+)\s*\((.*?)\)\s*ENGINE",
+        content,
+        re.DOTALL | re.IGNORECASE,
+    )
+    for tname, body in table_blocks:
+        cols = []
+        col_types = {}
+        for line in body.splitlines():
+            line = line.strip().rstrip(",")
+            if line and not line.startswith("--"):
+                parts = line.split(None, 1)
+                if parts:
+                    col_name = parts[0]
+                    col_type = parts[1] if len(parts) > 1 else "String"
+                    cols.append(col_name)
+                    col_types[col_name] = col_type
+        tables[tname] = {
+            "table_name": tname,
+            "columns": cols,
+            "column_types": col_types,
+        }
+    return tables
+
+

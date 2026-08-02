@@ -46,7 +46,9 @@ from atlys_agentic.tools_cuj1 import (
 
 # 3. CUJ 2: Analytics Agent & Telemetry Diagnostics Tools
 from atlys_agentic.tools_cuj2 import (
+    BASE_TABLE_SEMANTICS,
     Tool_Analytics_Compute,
+    Tool_Bootstrap_Base_Semantics,
     Tool_Check_Queries,
     Tool_Derive_Signals,
     Tool_Emit_CUJ2_Submission_Artifacts,
