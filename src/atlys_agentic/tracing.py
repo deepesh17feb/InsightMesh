@@ -277,35 +277,76 @@ def get_current_trace_id() -> str | None:
         return None
 
 
+def set_current_trace_as_public() -> bool:
+    """Set the currently active Langfuse trace as public worldwide using SDK and ingestion API."""
+    global _current_trace_id
+    success = False
+    try:
+        c = client()
+        if hasattr(c, "set_current_trace_as_public"):
+            c.set_current_trace_as_public()
+            success = True
+    except Exception:
+        pass
+
+    tid = get_current_trace_id()
+    if tid:
+        make_trace_public(tid)
+        success = True
+    return success
+
+
 def new_trace(spec_id: str, run_mode: str | None = None) -> str:
-    """Return or generate a valid trace ID tagged with spec_id and run_mode."""
+    """Return or generate a valid trace ID tagged with spec_id and run_mode, immediately setting it as public."""
     global _current_trace_id, _current_trace_url
     mode = resolve_run_mode(run_mode)
 
+    c = client()
+
     # 1. Return active trace ID if already inside a trace() block
     if _current_trace_id:
+        try:
+            if hasattr(c, "set_current_trace_as_public"):
+                c.set_current_trace_as_public()
+        except Exception:
+            pass
         make_trace_public(_current_trace_id)
         return _current_trace_id
 
     try:
-        c = client()
         if hasattr(c, "trace") and callable(getattr(c, "trace")):
             t_res = c.trace(name=f"clickathon-{mode}-{spec_id}", tags=[spec_id, mode])
             if t_res:
                 _current_trace_id = getattr(t_res, "id", str(t_res))
                 _current_trace_url = c.get_trace_url(trace_id=_current_trace_id) if hasattr(c, "get_trace_url") else None
+                try:
+                    if hasattr(c, "set_current_trace_as_public"):
+                        c.set_current_trace_as_public()
+                except Exception:
+                    pass
+                make_trace_public(_current_trace_id)
                 return _current_trace_id
 
         active_id = c.get_current_trace_id() if hasattr(c, "get_current_trace_id") else None
         if active_id:
             _current_trace_id = active_id
             _current_trace_url = c.get_trace_url(trace_id=_current_trace_id)
+            try:
+                if hasattr(c, "set_current_trace_as_public"):
+                    c.set_current_trace_as_public()
+            except Exception:
+                pass
             make_trace_public(_current_trace_id)
             return _current_trace_id
         if hasattr(c, "create_trace_id"):
             _current_trace_id = c.create_trace_id()
             _current_trace_url = c.get_trace_url(trace_id=_current_trace_id)
             if _current_trace_id:
+                try:
+                    if hasattr(c, "set_current_trace_as_public"):
+                        c.set_current_trace_as_public()
+                except Exception:
+                    pass
                 make_trace_public(_current_trace_id)
             return _current_trace_id
     except Exception:
@@ -315,6 +356,11 @@ def new_trace(spec_id: str, run_mode: str | None = None) -> str:
     _current_trace_id = uuid.uuid4().hex
     host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com").rstrip("/")
     _current_trace_url = f"{host}/trace/{_current_trace_id}"
+    try:
+        if hasattr(c, "set_current_trace_as_public"):
+            c.set_current_trace_as_public()
+    except Exception:
+        pass
     make_trace_public(_current_trace_id)
     return _current_trace_id
 
