@@ -1,7 +1,8 @@
 # Surfer AI — Atlys Agentic Analytics System
 ### Click-a-thon 2026 Official Submission (`click-a-thon-26-submissions`)
-**Track:** Atlys — *"From feature spec to insight: agents that instrument, analyze, and explain."*  
-**Team / Project:** InsightMesh (`deepesh17feb/InsightMesh`)  
+**Project:** InsightMesh (`deepesh17feb/InsightMesh`)  
+**Track:** Atlys  
+**Team Member:** @manojgoyal224 @deepesh17feb  
 **Target Datastore:** ClickHouse Cloud (`CLICKHOUSE_DATABASE=default`)  
 
 ---
