@@ -85,7 +85,82 @@ def flush() -> None:
 
 
 _current_trace_id: str | None = None
-_current_trace_url: str | None = None
+def make_trace_public(trace_id: str) -> bool:
+    """Make any Langfuse trace publicly accessible via its URL without requiring login."""
+    if not trace_id:
+        return False
+    try:
+        import requests
+        import uuid
+        pk = os.environ.get("LANGFUSE_PUBLIC_KEY")
+        sk = os.environ.get("LANGFUSE_SECRET_KEY")
+        host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com").rstrip("/")
+        if not (pk and sk):
+            return False
+
+        payload = {
+            "batch": [
+                {
+                    "id": str(uuid.uuid4()),
+                    "type": "trace-create",
+                    "timestamp": "2026-08-02T00:00:00.000Z",
+                    "body": {
+                        "id": trace_id,
+                        "public": True,
+                    },
+                }
+            ]
+        }
+        resp = requests.post(f"{host}/api/public/ingestion", json=payload, auth=(pk, sk), timeout=5)
+        return resp.status_code in (200, 201, 207)
+    except Exception:
+        return False
+
+
+def publish_all_project_traces() -> int:
+    """Publish all traces in the Langfuse project, making them publicly accessible worldwide."""
+    published = 0
+    try:
+        import requests
+        import uuid
+        pk = os.environ.get("LANGFUSE_PUBLIC_KEY")
+        sk = os.environ.get("LANGFUSE_SECRET_KEY")
+        host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com").rstrip("/")
+        c = client()
+
+        page = 1
+        limit = 100
+        while True:
+            res = c.api.trace.list(page=page, limit=limit)
+            trace_items = getattr(res, "data", []) or []
+            if not trace_items:
+                break
+
+            batch = []
+            for t in trace_items:
+                tid = getattr(t, "id", None)
+                if tid:
+                    batch.append({
+                        "id": str(uuid.uuid4()),
+                        "type": "trace-create",
+                        "timestamp": "2026-08-02T00:00:00.000Z",
+                        "body": {
+                            "id": tid,
+                            "public": True,
+                        },
+                    })
+
+            if batch:
+                resp = requests.post(f"{host}/api/public/ingestion", json={"batch": batch}, auth=(pk, sk), timeout=10)
+                if resp.status_code in (200, 201, 207):
+                    published += len(batch)
+
+            if len(trace_items) < limit:
+                break
+            page += 1
+    except Exception:
+        pass
+    return published
 
 
 @contextmanager
@@ -97,7 +172,7 @@ def trace(
     as_type: str = "chain",
 ):
     """Root observation (Chain) for one pipeline run (one ingestion, one analysis question).
-    Everything nested inside via step(), span(), or generation() becomes part of the same trace tree."""
+    Automatically makes the trace public and shareable worldwide."""
     global _current_trace_id, _current_trace_url
     mode = resolve_run_mode(run_mode)
     formatted_name = format_span_name(name, mode)
@@ -109,9 +184,21 @@ def trace(
         name=formatted_name, as_type=as_type, input=input or {}, metadata=meta
     ) as span_obj:
         _current_trace_id = c.get_current_trace_id()
+        try:
+            if hasattr(span_obj, "set_trace_as_public"):
+                span_obj.set_trace_as_public()
+            if hasattr(c, "set_current_trace_as_public"):
+                c.set_current_trace_as_public()
+        except Exception:
+            pass
+
+        if _current_trace_id:
+            make_trace_public(_current_trace_id)
+
         _current_trace_url = c.get_trace_url(trace_id=_current_trace_id) if _current_trace_id else None
         yield span_obj
     c.flush()
+
 
 
 @contextmanager
@@ -199,6 +286,8 @@ def new_trace(spec_id: str, run_mode: str | None = None) -> str:
         if hasattr(c, "create_trace_id"):
             _current_trace_id = c.create_trace_id()
             _current_trace_url = c.get_trace_url(trace_id=_current_trace_id)
+            if _current_trace_id:
+                make_trace_public(_current_trace_id)
             return _current_trace_id
     except Exception:
         pass
@@ -206,6 +295,7 @@ def new_trace(spec_id: str, run_mode: str | None = None) -> str:
     _current_trace_id = uuid.uuid4().hex
     host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com").rstrip("/")
     _current_trace_url = f"{host}/trace/{_current_trace_id}"
+    make_trace_public(_current_trace_id)
     return _current_trace_id
 
 
