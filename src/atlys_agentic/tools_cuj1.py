@@ -18,24 +18,27 @@ from atlys_agentic.tools_common import (
 
 
 def Tool_Infer_Table_Name(spec_id: str, spec_md_text: str = "") -> str:
-    """Infer the canonical ClickHouse table name from spec_id and spec.md text."""
+    """Infer the canonical ClickHouse table name generically from spec_id and spec.md text."""
     if spec_md_text:
-        match_header = re.search(r"^#\s*Feature\s*spec\s*[—–-]\s*([^\n]+)", spec_md_text, re.IGNORECASE | re.MULTILINE)
-        if match_header:
-            title = match_header.group(1).strip()
-            clean_title = re.sub(r"[^\w\s]", "", title).lower()
-            tokens = [t for t in clean_title.split() if t not in ("the", "spec", "feature")]
-            if tokens:
-                return "_".join(tokens)
-
         match = re.search(r"(?:table\s*name|target\s*table):\s*`?([a-zA-Z0-9_]+)`?", spec_md_text, re.IGNORECASE)
         if match:
             return match.group(1).lower()
+
+        match_header = re.search(r"^#\s*Feature\s*spec\s*[—–-]\s*([^\n]+)", spec_md_text, re.IGNORECASE | re.MULTILINE)
+        if match_header:
+            title = match_header.group(1).strip()
+            title = re.sub(r"\(.*?\)", "", title).strip()
+            clean_title = re.sub(r"[^\w\s]", " ", title).lower()
+            stop_words = {"the", "spec", "feature", "at", "a", "an", "for", "in", "on", "and", "of", "sealed", "unseen"}
+            tokens = [t for t in clean_title.split() if t not in stop_words]
+            if tokens:
+                return "_".join(tokens)
 
     name = spec_id
     if "_" in name and name.split("_")[0].isdigit():
         name = name.split("_", 1)[1]
     return name.lower()
+
 
 
 def _infer_cuj1_type(key: str, values: list, total_events: int) -> str:

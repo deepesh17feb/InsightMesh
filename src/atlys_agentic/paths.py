@@ -24,8 +24,26 @@ for _d in (OUTPUTS_DIR, SCHEMAS_DIR, INSIGHTS_DIR, TRACES_DIR, SUBMISSION_DIR, U
 
 
 def spec_dir(spec_id: str) -> Path:
-    if spec_id == "06_unseen":
-        return UNSEEN_SPECS_DIR
+    """Resolve spec directory generically across problem statement and agentic specs."""
+    # 1. Direct path check under problem statment/specs
+    candidate = SPECS_DIR / spec_id
+    if candidate.exists():
+        return candidate
+    # 2. Check under src/atlys_agentic/specs
+    candidate = ATLYS_AGENTIC_DIR / "specs" / spec_id
+    if candidate.exists():
+        return candidate
+    # 3. Check directly under problem statment/
+    candidate = PROBLEM_STATEMENT_DIR / spec_id
+    if candidate.exists():
+        return candidate
+    # 4. Check for partial name match across known locations
+    for root in (SPECS_DIR, ATLYS_AGENTIC_DIR / "specs", PROBLEM_STATEMENT_DIR):
+        if root.exists():
+            for item in root.iterdir():
+                if item.is_dir() and (item / "spec.md").exists():
+                    if spec_id in item.name or item.name in spec_id:
+                        return item
     return SPECS_DIR / spec_id
 
 
@@ -38,15 +56,18 @@ def events_ndjson(spec_id: str) -> Path:
 
 
 def available_spec_ids() -> list[str]:
+    """Discover all available feature spec IDs generically across spec folders."""
+    seen = set()
     specs = []
-    if SPECS_DIR.exists():
-        for item in sorted(SPECS_DIR.iterdir()):
-            if item.is_dir() and (item / "spec.md").exists():
-                specs.append(item.name)
-    if UNSEEN_SPECS_DIR.exists() and (UNSEEN_SPECS_DIR / "spec.md").exists():
-        if "06_unseen" not in specs:
-            specs.append("06_unseen")
-    return specs or ["01_express_checkout", "02_group_family", "03_coupons", "04_visas_for_digital_nomads", "05_price_drop"]
+    for root in (SPECS_DIR, ATLYS_AGENTIC_DIR / "specs", PROBLEM_STATEMENT_DIR):
+        if root.exists():
+            for item in sorted(root.iterdir()):
+                if item.is_dir() and (item / "spec.md").exists():
+                    if item.name not in seen:
+                        seen.add(item.name)
+                        specs.append(item.name)
+    return specs or ["01_express_checkout", "02_group_family", "03_status_sharing", "04_abandoned_checkout_recovery", "05_instant_forex"]
+
 
 
 def normalize_spec_id(spec_id: str) -> str:

@@ -17,7 +17,8 @@ from atlys_agentic.tools_common import (
     embed_text,
     Tool_Score_Confidence,
 )
-from atlys_agentic.tools_cuj1 import Tool_Write_Table_Semantics
+from atlys_agentic.tools_cuj1 import Tool_Infer_Table_Name, Tool_Write_Table_Semantics
+
 
 
 def Tool_Analytics_Compute(query: PlannedQuery | str | dict, spec_id: str = "") -> dict:
@@ -163,11 +164,12 @@ def Tool_Bootstrap_Base_Semantics(force: bool = False) -> dict:
     available_specs = paths.available_spec_ids()
     seeded_specs = []
     for sid in available_specs:
-        tbl_name = sid.split("_", 1)[-1] if "_" in sid else sid
+        spec_path = paths.spec_md(sid)
+        spec_text = spec_path.read_text(encoding="utf-8") if spec_path.exists() else ""
+        tbl_name = Tool_Infer_Table_Name(sid, spec_text)
         if force or tbl_name not in existing_tables:
-            spec_path = paths.SPECS_DIR / sid / "spec.md"
-            spec_text = spec_path.read_text(encoding="utf-8") if spec_path.exists() else ""
             cols = []
+
             events_file = paths.events_ndjson(sid)
             if events_file.exists():
                 try:
@@ -248,6 +250,13 @@ def Tool_Semantic_Retrieval(
         if classify_table_engine(engine) == "raw" and tname not in semantics_table_names:
             unranked_candidates.append(tname)
 
+    q_lower = (question or "").lower()
+
+    def _rank_candidate(c: dict) -> tuple:
+        t_clean = (c.get("table_name") or "").lower().replace("_", " ")
+        has_name = 1 if (t_clean and t_clean in q_lower) else 0
+        return (-has_name, c.get("dist", 1.0))
+
     if q_vec and raw_semantics:
         # Direct ClickHouse cosineDistance SQL execution per docs/CUJ2.md §4 Phase 1a
         q_vec_str = ", ".join(f"{x:.6f}" for x in q_vec)
@@ -298,8 +307,7 @@ def Tool_Semantic_Retrieval(
                     "dist": round(dist, 4),
                     "classification": "raw",
                 })
-            scored.sort(key=lambda x: x["dist"])
-
+        scored.sort(key=_rank_candidate)
         candidates = scored[:top_k]
     else:
         degraded_fallback = True
@@ -321,8 +329,9 @@ def Tool_Semantic_Retrieval(
                 "dist": dist,
                 "classification": "raw",
             })
-        scored.sort(key=lambda x: x["dist"])
+        scored.sort(key=_rank_candidate)
         candidates = scored[:top_k]
+
 
     best_dist = candidates[0]["dist"] if candidates else 1.0
     confident_match = (best_dist <= threshold) if not degraded_fallback else True
