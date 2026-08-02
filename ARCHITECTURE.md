@@ -6,7 +6,7 @@
 > **Context Storage:** Embedded `chDB` (In-process ClickHouse SQL & vector engine)  
 > **Agent Orchestration:** CrewAI Flows (`memory=False` · Deterministic Sequential Pipelines)  
 > **Observability:** Langfuse (Semantic Traces) + ClickStack / OpenTelemetry (System Traces)  
-> **User Interface:** LibreChat (Port 3080 · Docker Compose) & FastAPI Gateway (Port 8008)  
+> **Unified User Interface:** LibreChat (Port 3080 · Docker Compose) with 2 Configured Agent Models  
 
 ---
 
@@ -18,6 +18,7 @@
                     ┌───────────────────────────────────────────────────────────┐
                     │                   InsightMesh C4 Model                    │
                     ├─────────────────────────────┬─────────────────────────────┤
+                    │  Unified Interface          │  LibreChat (2 Agent Models) │
                     │  1. Instrumentation Agent   │  ClickHouse 6-Pillar DDL    │
                     │  2. Context Agent           │  chDB Custodian & Vectors   │
                     │  3. Query Architect         │  Precision SQL Translation  │
@@ -29,10 +30,15 @@
 
 ```mermaid
 flowchart TB
-    subgraph ClientSurfaces ["Client Surfaces"]
-        LC["LibreChat Conversational UI<br/>(Port 3080 · Docker Compose)"]
-        CLI["CLI Ingestion Runner<br/>(python -m atlys_agentic.run_ingestion)"]
-        HTTP["FastAPI Chat & Ingestion API<br/>(Port 8008 · /v1/chat/completions)"]
+    subgraph UserInterface ["Unified User Interface (LibreChat · Port 3080)"]
+        subgraph LibreChatModels ["2 Configured Agent Models in LibreChat Dropdown"]
+            M1["🤖 Atlys Instrumentation Engineer<br/>(Model: atlys-instrumentation)<br/>• Conversational Feature Ingestion<br/>• 6-Pillar Schema Design & DDL<br/>• Interactive Q&A & HITL Approval"]
+            M2["📊 Atlys Product Analyst<br/>(Model: atlys-analyst)<br/>• PM Question Answering<br/>• Multi-Cut Diagnostic Analytics<br/>• K1–K7 Anomaly Synthesis"]
+        end
+    end
+
+    subgraph APIGateway ["FastAPI Backend Gateway (Port 8008)"]
+        CHAT_API["OpenAI-Compatible Chat Gateway<br/>POST /v1/chat/completions<br/>• Stateless History & Token Parser<br/>• Streaming SSE Response Generator"]
     end
 
     subgraph AgentOrchestration ["Agent Orchestration Layer (CrewAI Flows)"]
@@ -52,9 +58,9 @@ flowchart TB
         CS[("ClickStack / HyperDX (OTel)<br/>(Query Latency, DDL Duration, OTLP Spans)")]
     end
 
-    LC --> HTTP
-    CLI --> AgentOrchestration
-    HTTP --> AgentOrchestration
+    M1 -->|HTTP OpenAI Chat Stream| CHAT_API
+    M2 -->|HTTP OpenAI Chat Stream| CHAT_API
+    CHAT_API --> AgentOrchestration
 
     CL <-->|SQL & Vector Queries| CHDB
     CL <-->|DDL Execution & Event Loads| CHCLOUD
@@ -217,14 +223,16 @@ In [`src/atlys_agentic/tools_common.py`](file:///usr/local/google/home/deepeshmw
 
 ---
 
-## 6. Deterministic CUJ 1 & CUJ 2 Workflows
+## 6. Deterministic CUJ 1 & CUJ 2 Workflows in LibreChat
 
 ### 6.1 CUJ 1: Schema Ingestion & Evolution (12-Phase Pipeline)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Operator as Human Operator (LibreChat / CLI)
+    actor Operator as User / PM / Engineer (LibreChat UI)
+    participant LC as LibreChat (atlys-instrumentation)
+    participant API as FastAPI Gateway (/v1/chat/completions)
     participant CL as Context Agent (Sole DB Custodian)
     participant chDB as chDB (schema_registry & business_context)
     participant IE as Instrumentation Engineer (Pure Architect)
@@ -232,35 +240,41 @@ sequenceDiagram
     participant VAL as Invariant Validator
     participant CH as ClickHouse Cloud ('default')
 
-    Operator->>CL: 1. Ingest Feature Spec ("ingest 01_express_checkout")
-    CL->>CH: 2. Refresh live catalog (system.tables & system.columns)
-    CL->>chDB: 3. Fetch schema_registry, business_context & metric definitions
-    CL->>IE: 4. Handoff Context Briefing (existing tables, caveats, spec text, sample events)
+    Operator->>LC: 1. Type "ingest 01_express_checkout"
+    LC->>API: 2. POST /v1/chat/completions (model: atlys-instrumentation)
+    API->>CL: 3. Invoke IngestionFlow
+    CL->>CH: 4. Refresh live catalog (system.tables & system.columns)
+    CL->>chDB: 5. Fetch schema_registry, business_context & metric definitions
+    CL->>IE: 6. Handoff Context Briefing (existing tables, caveats, spec text, sample events)
 
-    IE->>IE: 5. Formulate 6-Pillar Storage Design, Field Mapping & MV Justification
-    IE->>QA: 6. Hand off Design Intent
-    QA->>QA: 7. Render ClickHouse DDL, SummingMergeTree MV, and INSERT statement
+    IE->>IE: 7. Formulate 6-Pillar Storage Design, Field Mapping & MV Justification
+    IE->>QA: 8. Hand off Design Intent
+    QA->>QA: 9. Render ClickHouse DDL, SummingMergeTree MV, and INSERT statement
 
-    QA->>VAL: 8. Validate 4 Invariants (no id-first, partitioning, TTL, LowCardinality)
-    VAL-->>CL: 9. Validation passed (0 violations; bounded 1-retry if failed)
+    QA->>VAL: 10. Validate 4 Invariants (no id-first, partitioning, TTL, LowCardinality)
+    VAL-->>CL: 11. Validation passed (0 violations; bounded 1-retry if failed)
 
-    CL->>chDB: 10. Run context_diff (detect denominator conflicts, caveats, gaps)
-    CL-->>Operator: 11. Print Proposal Markdown + Hidden Token (<!-- atlys:proposal ... -->)
+    CL->>chDB: 12. Run context_diff (detect denominator conflicts, caveats, gaps)
+    CL-->>API: 13. Proposal Markdown + Hidden Token (<!-- atlys:proposal ... -->)
+    API-->>LC: 14. Render Interactive Proposal Card in Chat
 
-    Operator->>CL: 12. "APPROVE" (explicit authorization)
+    Operator->>LC: 15. Type "APPROVE"
 
-    CL->>CH: 13a. Execute CREATE TABLE & CREATE MATERIALIZED VIEW
-    CL->>CH: 13b. Load events.ndjson (FORMAT JSONEachRow)
-    CL->>chDB: 13c. Register schema v+1, upsert business_context & context_changelog
-    CL->>chDB: 13d. Write table_semantics (LLM summary + concepts + 768-dim embedding)
-    CL-->>Operator: 14. Emit Receipt, Artifacts (schema.sql, run_report.md) & Langfuse Trace URL
+    LC->>API: 16. Forward "APPROVE" with conversation history
+    API->>CL: 17. Reconstruct State from Hidden Token & Trigger Execution
+    CL->>CH: 18a. Execute CREATE TABLE & CREATE MATERIALIZED VIEW
+    CL->>CH: 18b. Load events.ndjson (FORMAT JSONEachRow)
+    CL->>chDB: 18c. Register schema v+1, upsert business_context & context_changelog
+    CL->>chDB: 18d. Write table_semantics (LLM summary + concepts + 768-dim embedding)
+    CL-->>API: 19. Emit Receipt, Artifacts & Langfuse Trace URL
+    API-->>LC: 20. Display Deployment Receipt & Verified Row Count
 ```
 
 ### 6.2 CUJ 2: Telemetry Analytics & PM Diagnosis (11-Phase Pipeline)
 
 ```mermaid
 flowchart TD
-    Q(["PM Natural-Language Question<br/>(via LibreChat UI / API)"]) --> GUARD["Phase 0: Guardrail Validation<br/>(Greeting / Abusive / Scope Check)"]
+    Q(["PM Natural-Language Question<br/>(Typed in LibreChat: atlys-analyst)"]) --> GUARD["Phase 0: Guardrail Validation<br/>(Greeting / Abusive / Scope Check)"]
     GUARD --> C1
 
     subgraph Phase1 ["Phase 1: 3-Guard Semantic Retrieval & Live Probe"]
@@ -289,7 +303,7 @@ flowchart TD
 
     subgraph Phase5 ["Phase 5: Synthesis & Persistence"]
         SYN["10. PM Synthesis & Sufficiency Review<br/>Carries 'the why', recommends next step,<br/>highlights denominator conflicts"]
-        OUT["11. Render LibreChat Markdown<br/>+ Persist chDB.insights (finding_key)<br/>+ Write insight_report.md & .json<br/>+ Attach Langfuse Trace URL"]
+        OUT["11. Stream LibreChat Markdown<br/>+ Persist chDB.insights (finding_key)<br/>+ Write insight_report.md & .json<br/>+ Attach Langfuse Trace URL"]
         SYN --> OUT
     end
 
@@ -309,23 +323,23 @@ To support multi-turn HITL workflows without server sessions, state is reconstru
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Idle
+    [*] --> Idle: User selects Agent Model in LibreChat
 
-    Idle --> Proposing: Ingestion Trigger ("ingest 01_express_checkout")
-    Idle --> Answering: Analytical Question
-    Idle --> Greeting: Help / Info Request
+    state "Atlys Instrumentation Engineer" as M_INST {
+        Idle --> Proposing: Ingestion Trigger ("ingest 01_express_checkout")
+        Proposing --> AwaitingApproval: Proposal Card Printed + Hidden Token
+        AwaitingApproval --> AwaitingApproval: Technical Inquiry (e.g. "Why timestamp first?")
+        AwaitingApproval --> Deploying: Operator types "APPROVE"
+        AwaitingApproval --> Aborted: Operator types "REJECT"
+        Deploying --> Deployed: DDL Executed + Events Loaded + Context Synced
+        Deploying --> RolledBack: Execution Failure (Clean rollback)
+    }
 
-    Proposing --> AwaitingApproval: Proposal Printed + Hidden Token
-    
-    AwaitingApproval --> AwaitingApproval: Technical Inquiry (e.g. "Why timestamp first?")
-    AwaitingApproval --> Deploying: Operator types "APPROVE"
-    AwaitingApproval --> Aborted: Operator types "REJECT"
-
-    Deploying --> Deployed: DDL Executed + Events Loaded + Context Synced
-    Deploying --> RolledBack: Execution Failure (Clean rollback)
-
-    Answering --> Answered: Multi-Cut Insight + Hidden Token
-    Answered --> Answering: Follow-Up Inquiry (Resumes Trace)
+    state "Atlys Product Analyst" as M_ANALYST {
+        Idle --> Answering: PM Business Question
+        Answering --> Answered: Multi-Cut PM Report + Hidden Token
+        Answered --> Answering: Follow-Up Diagnostic Question
+    }
 
     Deployed --> [*]
     Aborted --> [*]
@@ -384,4 +398,4 @@ Every Langfuse span recorded by InsightMesh adheres to a standardized contract:
   4. **LiteLLM Native Integration:** Enables automatic callbacks to Langfuse for request/response logging, token accounting, and cost tracking.
 
 ---
-*Created for the Click-a-thon 2026 Official Submission by the InsightMesh Team.*
+*Created for the Click-a-thon 2026 Official Submission by Surfer AI.*

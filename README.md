@@ -12,22 +12,27 @@
 
 ---
 
-## 🌐 Hosted Demo & Web Interface
+## 🌐 Hosted Demo & Unified Web Interface
+
+InsightMesh provides a **single unified conversational interface in LibreChat** (`http://localhost:3080`) powered by two dedicated agent models that handle both feature schema instrumentation and diagnostic analytics:
 
 - **LibreChat Web Interface:** `http://localhost:3080` (Docker Compose stack in `src/atlys_agentic/librechat/`)
-- **FastAPI Backend & Chat Gateway:** `http://localhost:8008` (OpenAI-compatible `/v1/chat/completions` endpoint)
+- **Configured LibreChat Agent Models:**
+  1. **`Atlys Instrumentation Engineer` (`atlys-instrumentation`):** Unified CUJ 1 agent for feature spec ingestion, 6-pillar ClickHouse DDL generation, interactive architectural Q&A, and 2-turn Human-in-the-Loop deployment approval (`APPROVE` / `REJECT`).
+  2. **`Atlys Product Analyst` (`atlys-analyst`):** Unified CUJ 2 agent for business question answering, 3-guard semantic retrieval, multi-cut ClickHouse aggregations, K1–K7 anomaly correlation, and PM insight synthesis.
+- **FastAPI Backend Gateway:** `http://localhost:8008` (OpenAI-compatible `/v1/chat/completions` endpoint connecting LibreChat to CrewAI Flows)
 - **Langfuse Semantic Tracing Project:** [Langfuse Project Dashboard](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9)
 
 ---
 
 ## What It Does
 
-InsightMesh from Surfer AI is an enterprise-grade agentic data platform that collapses the manual, multi-week "tracking-PRD $\rightarrow$ schema engineering $\rightarrow$ analytical insight" cycle into a fully automated, traceable, and inspectable conversational pipeline:
+InsightMesh from Surfer AI is an enterprise-grade agentic data platform that collapses the manual, multi-week "tracking-PRD $\rightarrow$ schema engineering $\rightarrow$ analytical insight" cycle into a fully automated, traceable, and inspectable conversational pipeline within LibreChat:
 
-1. **Instrumentation Agent (CUJ 1):** Ingests product feature specifications (`spec.md`) and raw event streams (`events.ndjson`), infers 6-pillar ClickHouse schemas (query-predicate ordering `(timestamp, user_id)`, monthly partitioning `toYYYYMM(timestamp)`, `LowCardinality` dictionary encodings, 12-month TTL, and `SummingMergeTree` materialized views), validates storage invariants with bounded retry, and executes deployment behind a 2-turn Human-in-the-Loop (HITL) approval gate in LibreChat.
+1. **Instrumentation Agent (CUJ 1 in LibreChat):** Ingests product feature specifications (`spec.md`) and raw event streams (`events.ndjson`), infers 6-pillar ClickHouse schemas (query-predicate ordering `(timestamp, user_id)`, monthly partitioning `toYYYYMM(timestamp)`, `LowCardinality` dictionary encodings, 12-month TTL, and `SummingMergeTree` materialized views), validates storage invariants with bounded retry, and executes deployment behind a 2-turn Human-in-the-Loop (HITL) approval gate directly in the chat window.
 2. **Context Agent (Librarian & Governance):** Serves as the sole database and metadata custodian. Maintains a living, versioned context layer in embedded **chDB** (`business_context`, `schema_registry`, `context_changelog`, `table_semantics`, and `insights`). Proactively flags metric denominator conflicts, data quality caveats (e.g. Android `os IS NULL`), and undocumented schema gaps.
 3. **Query Architect:** A precision SQL translation compiler shared across CUJ 1 and CUJ 2. Translates design intent into production ClickHouse DDL and analytical intent into typed `PlannedQuery` objects (5 cuts, intersection, daily time-series, alt-denominator headline) with strict origin tracking (`architect_llm` vs `architect_fallback`).
-4. **Analytics Agent (CUJ 2):** Translates natural-language business questions into multi-cut ClickHouse aggregations (device, country, destination, funnel stage, guest status), evaluates known platform issues (K1–K7), derives causal concentration ratios and date coincidences, enforces honest refusal on post-purchase metric boundary traps without hallucinating numbers, and synthesizes executive PM reports with calibrated confidence scores.
+4. **Analytics Agent (CUJ 2 in LibreChat):** Translates natural-language business questions into multi-cut ClickHouse aggregations (device, country, destination, funnel stage, guest status), evaluates known platform issues (K1–K7), derives causal concentration ratios and date coincidences, enforces honest refusal on post-purchase metric boundary traps without hallucinating numbers, and synthesizes executive PM reports with calibrated confidence scores.
 
 ---
 
@@ -40,7 +45,7 @@ InsightMesh from Surfer AI is an enterprise-grade agentic data platform that col
                     │ ClickHouse Cloud ('default')│  2.5M Events Analytical DB  │
                     │  chDB (In-Process SQL)      │  Living Context & Vectors   │
                     │  CrewAI Flows               │  Deterministic Workflows    │
-                    │  LibreChat                  │  Dual Persona Chat Interface│
+                    │  LibreChat (Unified UI)     │  2 Configured Agent Models  │
                     │  Langfuse & ClickStack      │  Two-Tier Observability     │
                     │  LiteLLM + Google Gemini    │  Zero-Temp Reasoning & Emb  │
                     └─────────────────────────────┴─────────────────────────────┘
@@ -51,7 +56,7 @@ InsightMesh from Surfer AI is an enterprise-grade agentic data platform that col
 | **Primary Datastore** | **ClickHouse Cloud** (`CLICKHOUSE_DATABASE=default`) | Analytical datastore holding **2,479,858 historical events** across 8 foundation tables plus newly ingested feature tables. Executes `windowFunnel`, `cosineDistance`, `SummingMergeTree` rollups, and multi-cut aggregations. |
 | **Context Datastore** | **chDB** (Embedded ClickHouse) | In-process ClickHouse engine (`metadata.sqlite` / local chDB session) storing 5 versioned tables: `schema_registry`, `business_context`, `context_changelog`, `table_semantics`, and `insights`. Zero dialect mismatch with ClickHouse Cloud. |
 | **Agent Framework** | **CrewAI Flows** | Deterministic sequential execution flows (`IngestionFlow` and `AnalysisFlow`) with strict `memory=False` to prevent opaque context hallucinations. All context is fetched JIT via explicit SQL. |
-| **Conversational UI** | **LibreChat** (Docker Compose) | Conversational frontend on port 3080 with dual personas: `Atlys Instrumentation Engineer` (`atlys-instrumentation`) and `Atlys Product Analyst` (`atlys-analyst`). State is maintained statelessly across turns via invisible HTML comments (`<!-- atlys:proposal -->`, `<!-- atlys:insight -->`). |
+| **Unified Interface** | **LibreChat** (Docker Compose) | Unified conversational UI on port 3080 with 2 configured agent models (`atlys-instrumentation` and `atlys-analyst`). State is maintained statelessly across turns via invisible HTML comments (`<!-- atlys:proposal -->`, `<!-- atlys:insight -->`). |
 | **Semantic Tracing** | **Langfuse** | End-to-end tracing across every agent step, prompt generation, tool execution, and context provenance. Every span records `input`, `output`, `metadata.agent`, and `metadata.why`. |
 | **System Observability**| **ClickStack / OpenTelemetry** | OpenTelemetry spans exporting query latencies, rows read, DDL execution time, and error metrics to ClickStack / HyperDX, correlated to Langfuse via a shared `trace_id`. |
 | **LLM Provider** | **Google Gemini** (`gemini/gemini-3-flash-preview`) | High-speed, high-reasoning LLM running at `temperature=0.0` for determinism. Embeddings generated via `text-embedding-004` (768 dimensions). |
@@ -132,31 +137,36 @@ LANGFUSE_TRACING_ENABLED=true
 CREWAI_DISABLE_TELEMETRY=true
 ```
 
-### 4. Running the Complete System End-to-End
+### 4. Running the Complete System End-to-End in LibreChat
 
 #### A. Run Test Suite & Invariant Safety Suite (88 tests)
 ```bash
 pytest -v
 ```
 
-#### B. Ingest a Feature Specification (CUJ 1)
+#### B. Launch Unified LibreChat Services
 ```bash
-# Interactive schema design and gated ClickHouse deployment
-python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/01_express_checkout"
-
-# Ingest the Unseen Spec (06_unseen)
-python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/06_unseen"
-```
-
-#### C. Launch Web Services & LibreChat
-```bash
-# Terminal 1: Launch FastAPI backend (Port 8008)
+# Terminal 1: Launch FastAPI backend gateway (Port 8008)
 python -m atlys_agentic.run_chat
 
 # Terminal 2: Launch LibreChat Web UI (Port 3080)
 docker compose -f src/atlys_agentic/librechat/docker-compose.librechat.yml up -d
 ```
-Open **`http://localhost:3080`** in your browser and chat with **`Atlys Instrumentation Engineer`** or **`Atlys Product Analyst`**.
+
+#### C. Interact with the Two Configured Agents in LibreChat
+Open **`http://localhost:3080`** in your browser:
+
+1. **Feature Spec Ingestion (CUJ 1):**
+   - In the top model dropdown, select **`Atlys Instrumentation Engineer`** (`atlys-instrumentation`).
+   - Type `ingest 01_express_checkout` (or `ingest problem statment/specs/06_unseen`).
+   - The agent returns the 6-pillar ClickHouse storage proposal and SummingMergeTree MV with full rationale.
+   - You can ask follow-up questions (e.g., *"Why is timestamp first in ORDER BY?"*).
+   - Type **`APPROVE`** to deploy the DDL to ClickHouse Cloud, stream raw events, update `schema_registry`, and register table semantics.
+
+2. **Diagnostic Product Analytics (CUJ 2):**
+   - In the top model dropdown, select **`Atlys Product Analyst`** (`atlys-analyst`).
+   - Ask any product diagnostic question (e.g., *"Why did checkout conversion drop on mobile web after the express checkout launch?"*).
+   - The agent retrieves candidate tables via `cosineDistance`, runs multi-cut aggregations, correlates with known issues K1–K7, and synthesizes an executive PM report.
 
 ---
 
@@ -169,7 +179,7 @@ Open **`http://localhost:3080`** in your browser and chat with **`Atlys Instrume
 | **Technical Implementation** | **20%** | • Strict 4-agent roster with Least-Privilege Data Custodianship (Context Agent is sole DB writer; Instrumentation & Query Architect have zero DB access).<br>• Generic LLM error handling with deterministic fallback preceding Instrumentation Engineer.<br>• Invariant safety validator with bounded 1-retry self-healing. | [ARCHITECTURE.md](ARCHITECTURE.md#2-agent-roster--least-privilege-custodianship-model)<br>[ARCHITECTURE.md](ARCHITECTURE.md#4-generic-llm-error-handling-architecture) |
 | **Innovation** | **20%** | • **No Hidden LLM Memory** (`memory=False`): JIT SQL retrieval prevents hallucination.<br>• **Stateless Chat State**: Invisible HTML comments preserve turn state without server sessions.<br>• **Two-Tier Observability**: Correlated Langfuse semantic traces + ClickStack OTel spans. | [ARCHITECTURE.md](ARCHITECTURE.md#6-stateless-conversation-state-machine)<br>[ARCHITECTURE.md](ARCHITECTURE.md#7-observability--telemetry-architecture) |
 | **Scalability & Impact** | **10%** | • Validated across **2,479,858 ClickHouse Cloud events**.<br>• **376.83 ms average query latency** across 15 real analytical queries.<br>• **100% test pass rate** (88/88 tests passing). | [EVALUATION_REPORT.md](EVALUATION_REPORT.md#1-executive-summary--verification-scorecard) |
-| **Presentation** | **5%** | • Native **LibreChat Web UI** with dual personas.<br>• Comprehensive Mermaid sequence and state diagrams with complete Langfuse trace deep links. | [ARCHITECTURE.md](ARCHITECTURE.md#11-high-level-c4-container-diagram)<br>[EVALUATION_REPORT.md](EVALUATION_REPORT.md#5-graded-surprise-round-spec-06-unseen-evaluation-06_unseen) |
+| **Presentation** | **5%** | • Native **LibreChat Web UI** with 2 configured agent models.<br>• Comprehensive Mermaid sequence and state diagrams with complete Langfuse trace deep links. | [ARCHITECTURE.md](ARCHITECTURE.md#11-high-level-c4-container-diagram)<br>[EVALUATION_REPORT.md](EVALUATION_REPORT.md#5-graded-surprise-round-spec-06-unseen-evaluation-06_unseen) |
 
 ---
 
