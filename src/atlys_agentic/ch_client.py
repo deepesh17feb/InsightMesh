@@ -55,7 +55,23 @@ class _HttpClient:
                 column_names = cols
                 result_rows = rows
 
-            return _Result()
+    def insert_ndjson(self, table_name: str, content: str | bytes) -> None:
+        import urllib.parse
+        data_bytes = content.encode("utf-8") if isinstance(content, str) else content
+        url = (
+            f"{self.base_url}/?database={self.database}"
+            f"&date_time_input_format=best_effort"
+            f"&input_format_import_nested_json=1"
+            f"&query=INSERT%20INTO%20{urllib.parse.quote(table_name)}%20FORMAT%20JSONEachRow"
+        )
+        req = urllib.request.Request(
+            url,
+            data=data_bytes,
+            headers={"Authorization": self.auth_header},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            resp.read()
 
 
 def get_client():
@@ -96,6 +112,32 @@ def command(sql: str) -> None:
 def select(sql: str) -> list[dict]:
     result = get_client().query(sql)
     return [dict(zip(result.column_names, row)) for row in result.result_rows]
+
+
+def insert_ndjson(table_name: str, content: str | bytes) -> None:
+    """Insert NDJSON / JSONEachRow content into ClickHouse table."""
+    c = get_client()
+    data_bytes = content.encode("utf-8") if isinstance(content, str) else content
+    if hasattr(c, "insert_ndjson"):
+        c.insert_ndjson(table_name, data_bytes)
+        return
+    if hasattr(c, "raw_insert"):
+        c.raw_insert(
+            table=table_name,
+            insert_block=data_bytes,
+            fmt="JSONEachRow",
+            settings={
+                "date_time_input_format": "best_effort",
+                "input_format_import_nested_json": 1,
+            },
+        )
+        return
+    sql_insert = (
+        f"INSERT INTO {table_name} "
+        f"SETTINGS date_time_input_format='best_effort', input_format_import_nested_json=1 "
+        f"FORMAT JSONEachRow\n{data_bytes.decode('utf-8', errors='replace')}"
+    )
+    c.command(sql_insert)
 
 
 def bootstrap_existing_tables() -> None:

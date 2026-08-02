@@ -535,7 +535,7 @@ def Tool_Resolve_And_Answerability(
         try:
             import litellm
             from atlys_agentic import prompts
-            model_name = os.environ.get("LLM_MODEL", "gemini/gemini-2.5-flash")
+            model_name = os.environ.get("LLM_MODEL", "gemini/gemini-3-flash-preview")
             prompt = prompts.build_resolve_and_answerability_prompt(
                 question=question,
                 candidates_info=enriched_candidates,

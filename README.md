@@ -73,7 +73,7 @@ CHDB_PATH=./chdb_data
 # ==============================================================================
 # LLM Configuration (LiteLLM / Gemini)
 # ==============================================================================
-LLM_MODEL=gemini/gemini-2.5-flash
+LLM_MODEL=gemini/gemini-3-flash-preview
 GEMINI_API_KEY=your-gemini-api-key
 # GOOGLE_API_KEY=your-google-api-key
 

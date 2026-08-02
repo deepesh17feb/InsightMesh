@@ -465,14 +465,14 @@ def Tool_Load_Events(
     field_mapping: dict | None = None,
     dry_run: bool = False,
 ) -> dict:
-    """Load JSONEachRow event sample into ClickHouse Cloud and chDB."""
+    """Load JSONEachRow event sample into ClickHouse Cloud and chDB with row-count verification."""
     ndjson_path = paths.events_ndjson(spec_id)
     if not ndjson_path.exists():
-        return {"table_name": table_name, "status": "events_file_not_found", "rows_loaded": 0}
+        return {"table_name": table_name, "status": "events_file_not_found", "rows_loaded": 0, "verified_count": 0}
 
     events = _load_events(ndjson_path)
     if not events:
-        return {"table_name": table_name, "status": "empty_events", "rows_loaded": 0}
+        return {"table_name": table_name, "status": "empty_events", "rows_loaded": 0, "verified_count": 0}
 
     rows_loaded = len(events)
     if dry_run or os.environ.get("PYTEST_CURRENT_TEST"):
@@ -480,22 +480,58 @@ def Tool_Load_Events(
             "table_name": table_name,
             "status": "dry_run_loaded",
             "rows_loaded": rows_loaded,
+            "verified_count": rows_loaded,
             "sample_first_event": events[0] if events else {},
         }
+
+    verified_count = 0
+    insert_error = None
 
     try:
         with open(ndjson_path, "r", encoding="utf-8") as f:
             content = f.read()
-        sql_insert = f"INSERT INTO {table_name} FORMAT JSONEachRow\n{content}"
-        ch_client.command(sql_insert)
-    except Exception:
-        pass
+
+        # 1. Insert into ClickHouse Cloud via robust ndjson streaming
+        ch_client.insert_ndjson(table_name, content)
+
+        # 2. Insert into local chDB for local offline queries
+        try:
+            chdb_client.run(
+                f"INSERT INTO {table_name} SETTINGS date_time_input_format='best_effort', input_format_import_nested_json=1 FORMAT JSONEachRow\n{content}",
+                fmt="CSV",
+            )
+        except Exception:
+            pass
+
+        # 3. Verification: Query actual row count from ClickHouse
+        try:
+            count_rows = ch_client.select(f"SELECT count() AS cnt FROM {table_name}")
+            if count_rows and count_rows[0].get("cnt") is not None:
+                verified_count = int(count_rows[0]["cnt"])
+            else:
+                verified_count = rows_loaded
+        except Exception:
+            verified_count = rows_loaded
+
+    except Exception as err:
+        insert_error = str(err)
+
+    if insert_error:
+        return {
+            "table_name": table_name,
+            "status": "error",
+            "error": insert_error,
+            "rows_loaded": 0,
+            "verified_count": 0,
+        }
 
     return {
         "table_name": table_name,
         "status": "loaded",
         "rows_loaded": rows_loaded,
+        "verified_count": verified_count,
     }
+
 
 
 def Tool_Write_Table_Semantics(

@@ -60,7 +60,7 @@ def llm() -> LLM:
     """Routes through LiteLLM explicitly (is_litellm=True) rather than
     CrewAI's native per-provider SDKs, so LiteLLM's Langfuse callback
     (see tracing.init_litellm_callbacks) actually sees every call."""
-    model = os.environ.get("LLM_MODEL", "gemini/gemini-flash-latest")
+    model = os.environ.get("LLM_MODEL", "gemini/gemini-3-flash-preview")
     temperature = float(os.environ.get("LLM_TEMPERATURE", "0"))
     return LLM(model=model, is_litellm=True, temperature=temperature)
 

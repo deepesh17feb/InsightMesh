@@ -224,7 +224,7 @@ def handle_followup_question(
         or os.environ.get("GOOGLE_API_KEY", "")
         or os.environ.get("OPENAI_API_KEY", "")
     ).strip()
-    model_name = os.environ.get("LLM_MODEL", "gemini/gemini-2.5-flash")
+    model_name = os.environ.get("LLM_MODEL", "gemini/gemini-3-flash-preview")
     if api_key and not os.environ.get("PYTEST_CURRENT_TEST"):
         try:
             import litellm
@@ -242,6 +242,14 @@ def handle_followup_question(
             )
             llm_text = resp.choices[0].message.content.strip()
             if llm_text:
+                tracing.generation(
+                    name="instrumentation_agent::followup_response",
+                    model=model_name,
+                    input={"question": question, "table": table, "spec": spec},
+                    output=llm_text,
+                    metadata={"agent": "instrumentation_agent", "why": "answered schema deep dive follow-up"},
+                    run_mode="librechat_client",
+                )
                 return f"{llm_text}\n\n🔍 Trace: https://us.cloud.langfuse.com/trace/{trace}\n\n{token}"
         except Exception:
             pass

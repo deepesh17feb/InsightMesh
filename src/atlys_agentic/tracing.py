@@ -203,8 +203,11 @@ def new_trace(spec_id: str, run_mode: str | None = None) -> str:
     except Exception:
         pass
     import uuid
-    _current_trace_id = f"trace-{mode}-{spec_id}"
+    _current_trace_id = uuid.uuid4().hex
+    host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com").rstrip("/")
+    _current_trace_url = f"{host}/trace/{_current_trace_id}"
     return _current_trace_id
+
 
 
 def span(
