@@ -1,16 +1,16 @@
 {
-  "question": "How does application completion rate compare between solo applicants and group/family applications across destinations?",
+  "question": "What is total browse volume on destination cards in H1 2026, and what proportion is from unauthenticated guest users?",
   "spec_id": "base_funnel",
-  "table_name": "application_started",
-  "interpretation": "Calculates the conversion rate (purchase_completed / application_started) segmented by solo (co_travelers = 0) vs group (co_travelers > 0) across destinations.",
+  "table_name": "destination_card_clicked",
+  "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest = 1.",
   "answerability": {
-    "chosen_table": "application_started",
+    "chosen_table": "destination_card_clicked",
     "spec_id": "base_funnel",
     "answerable": "yes",
-    "interpretation": "Calculates the conversion rate (purchase_completed / application_started) segmented by solo (co_travelers = 0) vs group (co_travelers > 0) across destinations.",
-    "metric": "conversion_rate",
-    "denominator_used": "application_started",
-    "denominator_conflict": "Metric #0 defines conversion rate using sessions, but Metric #6 defines funnel conversion using application_started; the latter is used for application completion.",
+    "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest = 1.",
+    "metric": "browse_volume",
+    "denominator_used": "destination_card_clicked",
+    "denominator_conflict": null,
     "missing": [],
     "required_cuts": [
       "device_type",
@@ -19,7 +19,7 @@
       "event",
       "is_guest"
     ],
-    "why": "The application_started table contains the co_travelers column necessary to distinguish solo from group applications and the destination column for the requested breakdown."
+    "why": "The destination_card_clicked table directly tracks the 'browse' action and contains the is_guest flag to distinguish unauthenticated users."
   },
   "headline": {
     "baseline_rate": 62.4,
@@ -55,18 +55,24 @@
     "top_cross_segment": "ios \u00d7 AE",
     "date_coincidence": "2026-03-12"
   },
-  "matched_known_issue": null,
+  "matched_known_issue": {
+    "k_id": "K-Issue",
+    "title": "[5. Known-issues log#0] 1. **K1 \u2014 iOS WebKit OTP autofill regression.** On recent iOS builds the payment OTP\n   field fails to autofill, and some users abandon at the pay step. Payment-heavy\n   geos (Gulf card users) are most exposed. Watch `pay_now_clicked \u2192 purchase_completed`\n   for iOS.\n2. **K2 \u2014 Passport scan model update (Apr 2026).** The on-device passport model was\n   updated in early April. Some Android devices report more capture failures since;\n   being monitored.\n3. **K3 \u2014 MRZ OCR weaker on non-Latin passports.** Passports with non-Latin\n   machine-readable zones need more capture retries.\n4. **K4 \u2014 Schengen summer slot scarcity (Apr\u2013Jun).** Appointment slots for Schengen\n   destinations are scarce in summer; expect seasonal softness, not a bug.\n5. **K5 \u2014 WhatsApp nudge launch (Feb 2026).** A WhatsApp re-engagement nudge went\n   live in February; it can lift returns to the funnel for previously-dropped users.\n6. **K6 \u2014 SUMMER20 coupon campaign.** A `SUMMER20` promo ran in Q2; expect elevated\n   `coupon_applied` and lower realised `value`.\n7. **K7 \u2014 App 7.45 rollout.** App version 7.45.x rolled out mid-quarter; minor\n   funnel-timing shifts around the rollout are expected.",
+    "date_logged": "2026-03-11",
+    "version": 1,
+    "description": "[5. Known-issues log#0] 1. **K1 \u2014 iOS WebKit OTP autofill regression.** On recent iOS builds the payment OTP\n   field fails to autofill, and some users abandon at the pay step. Payment-heavy\n   geos (Gulf card users) are most exposed. Watch `pay_now_clicked \u2192 purchase_completed`\n   for iOS.\n2. **K2 \u2014 Passport scan model update (Apr 2026).** The on-device passport model was\n   updated in early April. Some Android devices report more capture failures since;\n   being monitored.\n3. **K3 \u2014 MRZ OCR weaker on non-Latin passports.** Passports with non-Latin\n   machine-readable zones need more capture retries.\n4. **K4 \u2014 Schengen summer slot scarcity (Apr\u2013Jun).** Appointment slots for Schengen\n   destinations are scarce in summer; expect seasonal softness, not a bug.\n5. **K5 \u2014 WhatsApp nudge launch (Feb 2026).** A WhatsApp re-engagement nudge went\n   live in February; it can lift returns to the funnel for previously-dropped users.\n6. **K6 \u2014 SUMMER20 coupon campaign.** A `SUMMER20` promo ran in Q2; expect elevated\n   `coupon_applied` and lower realised `value`.\n7. **K7 \u2014 App 7.45 rollout.** App version 7.45.x rolled out mid-quarter; minor\n   funnel-timing shifts around the rollout are expected."
+  },
   "trend": {
     "state": "persisting",
-    "finding_key": "application_started::conversion_rate::device_type::ios",
-    "prior_finding": "A prior insight on 2026-03-18 recorded the same finding (`application_started::conversion_rate::device_type::ios`). This has been unresolved for 13 days."
+    "finding_key": "destination_card_clicked::browse_volume::device_type::ios",
+    "prior_finding": "A prior insight on 2026-03-18 recorded the same finding (`destination_card_clicked::browse_volume::device_type::ios`). This has been unresolved for 13 days."
   },
   "confidence": {
-    "score": 0.8,
+    "score": 0.87,
     "rationale": "High Reliability: Large sample size, documented known issue match, consistent cuts",
     "sample_size_component": 0.4,
     "effect_size_component": 0.25,
-    "known_issue_component": 0.0,
+    "known_issue_component": 0.2,
     "cut_consistency_component": 0.15
   },
   "reasoning_chain": [
@@ -74,52 +80,52 @@
       "step": "context_agent::semantic_retrieval",
       "agent": "context_agent",
       "input": {
-        "question": "How does application completion rate compare between solo applicants and group/family applications across destinations?"
+        "question": "What is total browse volume on destination cards in H1 2026, and what proportion is from unauthenticated guest users?"
       },
       "output": {
         "top_3_candidates": [
           {
-            "table_name": "group_family_applications",
-            "spec_id": "02_group_family",
-            "description": "Lets one traveller create a single application for a group (family or friends),",
-            "concepts": "group family applications, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
-            "dist": 0.7333,
-            "classification": "raw"
-          },
-          {
-            "table_name": "group_applications",
-            "spec_id": "02_group_family",
-            "description": "Lets one traveller create a single application for a group (family or friends),",
-            "concepts": "group applications, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
-            "dist": 0.7333,
-            "classification": "raw"
-          },
-          {
-            "table_name": "application_started",
+            "table_name": "destination_card_clicked",
             "spec_id": "base_funnel",
-            "description": "Stage 1 of the core visa funnel where a user initiates an application for a destination. Records application_id, destination, co-travelers, and visa_issuance_eta_days.",
-            "concepts": "application started, id, application_id, app_session_id, device, device_type, os, app_version, client_lib",
-            "dist": 0.8667,
+            "description": "Top-of-funnel destination browse and card click events where users view visa requirements. Contains is_guest_browse (1 for unauthenticated guest user, 0 for authenticated registered user), destination, device, co_travelers, card_type, flow, and traffic attribution.",
+            "concepts": "destination card clicked, id, application_id, app_session_id, device, device_type, os, app_version, client_lib",
+            "dist": 0.6471,
+            "classification": "raw"
+          },
+          {
+            "table_name": "destination_card_clicked",
+            "spec_id": "base_funnel",
+            "description": "Top-of-funnel destination browse and card click events where users view visa requirements. Contains is_guest_browse (1 for unauthenticated guest user, 0 for authenticated registered user), destination, device, co_travelers, card_type, flow, and traffic attribution.",
+            "concepts": "destination card clicked, id, application_id, app_session_id, device, device_type, os, app_version, client_lib",
+            "dist": 0.6471,
+            "classification": "raw"
+          },
+          {
+            "table_name": "destination_card_clicked",
+            "spec_id": "base_funnel",
+            "description": "Top-of-funnel destination browse and card click events where users view visa requirements. Contains is_guest_browse (1 for unauthenticated guest user, 0 for authenticated registered user), destination, device, co_travelers, card_type, flow, and traffic attribution.",
+            "concepts": "destination card clicked, id, application_id, app_session_id, device, device_type, os, app_version, client_lib",
+            "dist": 0.6471,
             "classification": "raw"
           }
         ],
-        "best_distance": 0.7333,
+        "best_distance": 0.6471,
         "confident_match": true
       },
-      "why": "Semantic vector search over table_semantics matched candidate `group_family_applications` with distance 0.73 (classified as raw table)."
+      "why": "Semantic vector search over table_semantics matched candidate `destination_card_clicked` with distance 0.65 (classified as raw table)."
     },
     {
       "step": "context_agent::load_table_semantics",
       "agent": "context_agent",
       "input": {
         "candidate_tables": [
-          "group_family_applications",
-          "group_applications",
-          "application_started"
+          "destination_card_clicked",
+          "destination_card_clicked",
+          "destination_card_clicked"
         ]
       },
       "output": {
-        "tables_loaded": 3,
+        "tables_loaded": 1,
         "metrics_found": 15,
         "caveats_found": 0,
         "known_issues_found": 2
@@ -130,36 +136,34 @@
       "step": "context_agent::live_probe",
       "agent": "context_agent",
       "input": {
-        "table": "group_family_applications"
+        "table": "destination_card_clicked"
       },
       "output": {
-        "table_name": "group_family_applications",
-        "rows": 5453,
-        "from_ts": "2026-06-08 06:01:00",
-        "to_ts": "2026-06-28 23:10:00",
-        "users": 1200
+        "table_name": "destination_card_clicked",
+        "rows": 1000000,
+        "from_ts": "2026-01-01 00:00:35",
+        "to_ts": "2026-06-30 23:59:40",
+        "users": 995316
       },
-      "why": "Probed ClickHouse table `group_family_applications`: 5,453 event rows, 1,200 distinct users across window 2026-06-08 06:01:00 \u2192 2026-06-28 23:10:00."
+      "why": "Probed ClickHouse table `destination_card_clicked`: 1,000,000 event rows, 995,316 distinct users across window 2026-01-01 00:00:35 \u2192 2026-06-30 23:59:40."
     },
     {
       "step": "context_agent::resolve_and_answerability",
       "agent": "context_agent",
       "input": {
-        "question": "How does application completion rate compare between solo applicants and group/family applications across destinations?",
+        "question": "What is total browse volume on destination cards in H1 2026, and what proportion is from unauthenticated guest users?",
         "candidates": [
-          "group_family_applications",
-          "group_applications",
-          "application_started"
+          "destination_card_clicked"
         ]
       },
       "output": {
-        "chosen_table": "application_started",
+        "chosen_table": "destination_card_clicked",
         "spec_id": "base_funnel",
         "answerable": "yes",
-        "interpretation": "Calculates the conversion rate (purchase_completed / application_started) segmented by solo (co_travelers = 0) vs group (co_travelers > 0) across destinations.",
-        "metric": "conversion_rate",
-        "denominator_used": "application_started",
-        "denominator_conflict": "Metric #0 defines conversion rate using sessions, but Metric #6 defines funnel conversion using application_started; the latter is used for application completion.",
+        "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest = 1.",
+        "metric": "browse_volume",
+        "denominator_used": "destination_card_clicked",
+        "denominator_conflict": null,
         "missing": [],
         "required_cuts": [
           "device_type",
@@ -168,28 +172,32 @@
           "event",
           "is_guest"
         ],
-        "why": "The application_started table contains the co_travelers column necessary to distinguish solo from group applications and the destination column for the requested breakdown."
+        "why": "The destination_card_clicked table directly tracks the 'browse' action and contains the is_guest flag to distinguish unauthenticated users."
       },
-      "why": "The application_started table contains the co_travelers column necessary to distinguish solo from group applications and the destination column for the requested breakdown."
+      "why": "The destination_card_clicked table directly tracks the 'browse' action and contains the is_guest flag to distinguish unauthenticated users."
     },
     {
       "step": "context_agent::known_issue_match",
       "agent": "context_agent",
       "input": {
-        "question": "How does application completion rate compare between solo applicants and group/family applications across destinations?",
-        "table": "application_started"
+        "question": "What is total browse volume on destination cards in H1 2026, and what proportion is from unauthenticated guest users?",
+        "table": "destination_card_clicked"
       },
       "output": {
-        "match": null
+        "k_id": "K-Issue",
+        "title": "[5. Known-issues log#0] 1. **K1 \u2014 iOS WebKit OTP autofill regression.** On recent iOS builds the payment OTP\n   field fails to autofill, and some users abandon at the pay step. Payment-heavy\n   geos (Gulf card users) are most exposed. Watch `pay_now_clicked \u2192 purchase_completed`\n   for iOS.\n2. **K2 \u2014 Passport scan model update (Apr 2026).** The on-device passport model was\n   updated in early April. Some Android devices report more capture failures since;\n   being monitored.\n3. **K3 \u2014 MRZ OCR weaker on non-Latin passports.** Passports with non-Latin\n   machine-readable zones need more capture retries.\n4. **K4 \u2014 Schengen summer slot scarcity (Apr\u2013Jun).** Appointment slots for Schengen\n   destinations are scarce in summer; expect seasonal softness, not a bug.\n5. **K5 \u2014 WhatsApp nudge launch (Feb 2026).** A WhatsApp re-engagement nudge went\n   live in February; it can lift returns to the funnel for previously-dropped users.\n6. **K6 \u2014 SUMMER20 coupon campaign.** A `SUMMER20` promo ran in Q2; expect elevated\n   `coupon_applied` and lower realised `value`.\n7. **K7 \u2014 App 7.45 rollout.** App version 7.45.x rolled out mid-quarter; minor\n   funnel-timing shifts around the rollout are expected.",
+        "date_logged": "2026-03-11",
+        "version": 1,
+        "description": "[5. Known-issues log#0] 1. **K1 \u2014 iOS WebKit OTP autofill regression.** On recent iOS builds the payment OTP\n   field fails to autofill, and some users abandon at the pay step. Payment-heavy\n   geos (Gulf card users) are most exposed. Watch `pay_now_clicked \u2192 purchase_completed`\n   for iOS.\n2. **K2 \u2014 Passport scan model update (Apr 2026).** The on-device passport model was\n   updated in early April. Some Android devices report more capture failures since;\n   being monitored.\n3. **K3 \u2014 MRZ OCR weaker on non-Latin passports.** Passports with non-Latin\n   machine-readable zones need more capture retries.\n4. **K4 \u2014 Schengen summer slot scarcity (Apr\u2013Jun).** Appointment slots for Schengen\n   destinations are scarce in summer; expect seasonal softness, not a bug.\n5. **K5 \u2014 WhatsApp nudge launch (Feb 2026).** A WhatsApp re-engagement nudge went\n   live in February; it can lift returns to the funnel for previously-dropped users.\n6. **K6 \u2014 SUMMER20 coupon campaign.** A `SUMMER20` promo ran in Q2; expect elevated\n   `coupon_applied` and lower realised `value`.\n7. **K7 \u2014 App 7.45 rollout.** App version 7.45.x rolled out mid-quarter; minor\n   funnel-timing shifts around the rollout are expected."
       },
-      "why": "No documented known issue matched this specific cohort pattern."
+      "why": "Matched documented platform issue K-Issue ('[5. Known-issues log#0] 1. **K1 \u2014 iOS WebKit OTP autofill regression.** On recent iOS builds the payment OTP\n   field fails to autofill, and some users abandon at the pay step. Payment-heavy\n   geos (Gulf card users) are most exposed. Watch `pay_now_clicked \u2192 purchase_completed`\n   for iOS.\n2. **K2 \u2014 Passport scan model update (Apr 2026).** The on-device passport model was\n   updated in early April. Some Android devices report more capture failures since;\n   being monitored.\n3. **K3 \u2014 MRZ OCR weaker on non-Latin passports.** Passports with non-Latin\n   machine-readable zones need more capture retries.\n4. **K4 \u2014 Schengen summer slot scarcity (Apr\u2013Jun).** Appointment slots for Schengen\n   destinations are scarce in summer; expect seasonal softness, not a bug.\n5. **K5 \u2014 WhatsApp nudge launch (Feb 2026).** A WhatsApp re-engagement nudge went\n   live in February; it can lift returns to the funnel for previously-dropped users.\n6. **K6 \u2014 SUMMER20 coupon campaign.** A `SUMMER20` promo ran in Q2; expect elevated\n   `coupon_applied` and lower realised `value`.\n7. **K7 \u2014 App 7.45 rollout.** App version 7.45.x rolled out mid-quarter; minor\n   funnel-timing shifts around the rollout are expected.') logged 2026-03-11."
     },
     {
       "step": "query_architect::plan_queries",
       "agent": "query_architect",
       "input": {
-        "interpretation": "Calculates the conversion rate (purchase_completed / application_started) segmented by solo (co_travelers = 0) vs group (co_travelers > 0) across destinations.",
-        "table": "application_started"
+        "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest = 1.",
+        "table": "destination_card_clicked"
       },
       "output": {
         "queries_planned": 9,
@@ -262,13 +270,13 @@
       "agent": "analytics_agent",
       "input": {
         "headline_delta": -15.2,
-        "finding_key": "application_started::conversion_rate::device_type::ios"
+        "finding_key": "destination_card_clicked::browse_volume::device_type::ios"
       },
       "output": {
         "headline_delta": -15.2,
         "concentration_ratio": 0.78,
         "trend_state": "persisting",
-        "confidence_score": 0.8
+        "confidence_score": 0.87
       },
       "why": "Derived signals: headline delta -15.2pp, concentration ratio 78%, date coincidence vs K-issue, and trend state 'persisting'."
     },
@@ -276,11 +284,11 @@
       "step": "analytics_agent::synthesize",
       "agent": "analytics_agent",
       "input": {
-        "question": "How does application completion rate compare between solo applicants and group/family applications across destinations?",
-        "finding_key": "application_started::conversion_rate::device_type::ios"
+        "question": "What is total browse volume on destination cards in H1 2026, and what proportion is from unauthenticated guest users?",
+        "finding_key": "destination_card_clicked::browse_volume::device_type::ios"
       },
       "output": {
-        "answer_preview": "### Application Started \u2014 conversion rate analysis\n\n**Interpretation:** `conversion_rate` on `application_started`, evaluated across 5 standard cuts ("
+        "answer_preview": "### Destination Card Clicked \u2014 browse volume analysis\n\n**Interpretation:** `browse_volume` on `destination_card_clicked`, evaluated across 5 standard "
       },
       "why": "Synthesized executive PM insight uncovering root cause, headline deltas, multi-cut concentration, context version, and next-step actions."
     },
@@ -288,16 +296,16 @@
       "step": "context_agent::persist_insight",
       "agent": "context_agent",
       "input": {
-        "finding_key": "application_started::conversion_rate::device_type::ios",
+        "finding_key": "destination_card_clicked::browse_volume::device_type::ios",
         "spec_id": "base_funnel"
       },
       "output": {
         "persisted": true,
-        "finding_key": "application_started::conversion_rate::device_type::ios"
+        "finding_key": "destination_card_clicked::browse_volume::device_type::ios"
       },
-      "why": "Persisted insight record with finding_key 'application_started::conversion_rate::device_type::ios' to chDB insights table for cross-question trend continuity."
+      "why": "Persisted insight record with finding_key 'destination_card_clicked::browse_volume::device_type::ios' to chDB insights table for cross-question trend continuity."
     }
   ],
-  "trace_id": "fb0d8273d66214a1019d1373352c5274",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/fb0d8273d66214a1019d1373352c5274"
+  "trace_id": "d1fed76af0f7cd4e21ca8cea3628e01f",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/d1fed76af0f7cd4e21ca8cea3628e01f"
 }

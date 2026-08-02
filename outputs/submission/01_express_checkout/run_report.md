@@ -1,8 +1,8 @@
 # CUJ 1 Ingestion Run Report — `01_express_checkout`
 
 - **Target Table:** `express_checkout`
-- **Execution Timestamp:** `2026-08-02T03:54:44.129230+00:00`
-- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/a06ce35aa0253bff3b63ce93a4a6d910
+- **Execution Timestamp:** `2026-08-02T04:23:09.454713+00:00`
+- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/b3458d1ce2002eeeeb91ea6f00b22652
 - **Run Mode:** `live_run`
 
 ---
@@ -102,7 +102,7 @@ app-open / web visit. This is the headline number reported to leadership.; Denom
 
 - **DDL Execution:** `ok`
 - **Rows Loaded:** **5,507** rows from `events.ndjson`
-- **Schema Registry Version:** `2`
+- **Schema Registry Version:** `4`
 - **Context Upserts:** `21` entries
 
 ---
@@ -118,6 +118,6 @@ app-open / web visit. This is the headline number reported to leadership.; Denom
 7. **context_agent::context_diff** (context_agent): audited context: 21 additions, 3 conflicts, 10 gaps
 8. **context_agent::execute_ddl** (context_agent): executed CREATE TABLE and CREATE MATERIALIZED VIEW on ClickHouse Cloud with rollback guarantee
 9. **context_agent::load_events** (context_agent): loaded 5,507 events from events.ndjson into ClickHouse Cloud table express_checkout
-10. **context_agent::register_schema_version** (context_agent): registered table 'express_checkout' version 2 in schema_registry
+10. **context_agent::register_schema_version** (context_agent): registered table 'express_checkout' version 4 in schema_registry
 11. **context_agent::sync_context** (context_agent): upserted 21 attributes into business_context and context_changelog with trace attribution
-12. **context_agent::write_table_semantics** (context_agent): wrote table description, concepts, and embedding (0 dims) for express_checkout into chDB table_semantics (v1)
+12. **context_agent::write_table_semantics** (context_agent): wrote table description, concepts, and embedding (0 dims) for express_checkout into chDB table_semantics (v10)
