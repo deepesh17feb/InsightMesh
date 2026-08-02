@@ -266,22 +266,34 @@ def trace_url() -> str | None:
         return None
 
 
+def get_current_trace_id() -> str | None:
+    """Return the currently active trace ID."""
+    global _current_trace_id
+    if _current_trace_id:
+        return _current_trace_id
+    try:
+        return client().get_current_trace_id()
+    except Exception:
+        return None
+
+
 def new_trace(spec_id: str, run_mode: str | None = None) -> str:
     """Return or generate a valid trace ID tagged with spec_id and run_mode."""
     global _current_trace_id, _current_trace_url
     mode = resolve_run_mode(run_mode)
-    trace_name = f"clickathon-{mode}-{spec_id}"
+
+    # 1. Return active trace ID if already inside a trace() block
+    if _current_trace_id:
+        make_trace_public(_current_trace_id)
+        return _current_trace_id
+
     try:
         c = client()
-        if hasattr(c, "trace") and callable(getattr(c, "trace")):
-            t = c.trace(name=trace_name, tags=[spec_id, mode])
-            _current_trace_id = getattr(t, "id", str(t))
-            _current_trace_url = c.get_trace_url(trace_id=_current_trace_id) if hasattr(c, "get_trace_url") else None
-            return _current_trace_id
         active_id = c.get_current_trace_id() if hasattr(c, "get_current_trace_id") else None
         if active_id:
             _current_trace_id = active_id
             _current_trace_url = c.get_trace_url(trace_id=_current_trace_id)
+            make_trace_public(_current_trace_id)
             return _current_trace_id
         if hasattr(c, "create_trace_id"):
             _current_trace_id = c.create_trace_id()
@@ -291,12 +303,14 @@ def new_trace(spec_id: str, run_mode: str | None = None) -> str:
             return _current_trace_id
     except Exception:
         pass
+
     import uuid
     _current_trace_id = uuid.uuid4().hex
     host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com").rstrip("/")
     _current_trace_url = f"{host}/trace/{_current_trace_id}"
     make_trace_public(_current_trace_id)
     return _current_trace_id
+
 
 
 
