@@ -14,8 +14,8 @@ from langfuse import Langfuse
 
 from atlys_agentic import paths
 
-load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env")
-load_dotenv(paths.REPO_ROOT / ".env")
+load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env", override=True)
+load_dotenv(paths.REPO_ROOT / ".env", override=True)
 
 _client = None
 

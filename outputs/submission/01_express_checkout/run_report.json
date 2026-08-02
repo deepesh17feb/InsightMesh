@@ -1,16 +1,16 @@
 {
   "spec_id": "01_express_checkout",
   "table_name": "express_checkout",
-  "timestamp": "2026-08-02T04:44:18.304352+00:00",
-  "trace_id": "1ca1fcc55a4a2d835f578d6ae29e51df",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/2f894bddcbde1149aede32dd0bb3402b",
+  "timestamp": "2026-08-02T05:56:50.582679+00:00",
+  "trace_id": "2360d9fd1f3728ffcc43d9bc23238c94",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/6a4b11d884e716ccb0fa836d137530f0",
   "run_mode": "live_run",
-  "strategy": "EVOLVE",
+  "strategy": "CREATE",
   "strategy_why": "",
   "ddl": "CREATE TABLE IF NOT EXISTS express_checkout (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    eligible UInt8,\n    shown_amount Nullable(Float64),\n    currency LowCardinality(String),\n    saved_method_type LowCardinality(String),\n    otp_attempts Nullable(Int64),\n    otp_success UInt8,\n    payment_amount Nullable(Float64),\n    payment_currency LowCardinality(String),\n    payment_latency_ms Nullable(Int64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
   "mv_ddl": "-- justification: daily segment rollup for accelerated dashboard query execution\nCREATE MATERIALIZED VIEW IF NOT EXISTS express_checkout_daily_mv\nENGINE = SummingMergeTree\nPARTITION BY toYYYYMM(date)\nORDER BY (device_type, os, geoip_country_code, destination, date, event)\nAS SELECT\n    toYYYYMMDD(timestamp) AS date,\n    device_type, os, geoip_country_code, destination, event,\n    count() AS total_events,\n    uniqState(user_id) AS unique_users\nFROM express_checkout\nGROUP BY device_type, os, geoip_country_code, destination, date, event;",
   "rows_loaded": 5507,
-  "schema_version": 5,
+  "schema_version": 1,
   "field_mapping": {
     "event": "event",
     "id": "id",
@@ -106,7 +106,7 @@
     "description": "A one-tap checkout for returning travellers. When a user with a saved payment",
     "concepts": "express checkout, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
     "embedding_dims": 0,
-    "version": 11
+    "version": 3
   },
   "reasoning_chain": [
     {
@@ -119,22 +119,14 @@
       },
       "output": {
         "status": "synced",
-        "live_tables_found": 16,
+        "live_tables_found": 8,
         "tables": [
-          "abandoned_checkout_recovery",
           "application_started",
           "auth_completed",
-          "clickathon.express_checkout_shown",
           "destination_card_clicked",
           "document_uploaded",
-          "express_checkout",
-          "group_applications",
-          "group_family",
-          "group_family_applications",
-          "instant_forex_orders",
           "landing_page_scrolled",
           "pay_now_clicked",
-          "promo_coupon_checkout",
           "purchase_completed",
           "search_typed"
         ]
@@ -155,7 +147,7 @@
     {
       "step": "context_agent::decide_strategy",
       "agent": "context_agent",
-      "why": "strategy decided: EVOLVE",
+      "why": "strategy decided: CREATE",
       "input": {
         "table": "express_checkout",
         "columns": [
@@ -183,9 +175,9 @@
         ]
       },
       "output": {
-        "strategy": "EVOLVE",
-        "reason": "Table `express_checkout` previously registered at version 4. Proposing backward-compatible schema evolution.",
-        "target_version": 5
+        "strategy": "CREATE",
+        "reason": "Table `express_checkout` has no prior version registered in schema_registry. Proposing clean CREATE TABLE DDL.",
+        "target_version": 1
       }
     },
     {
@@ -360,7 +352,7 @@
       "output": {
         "status": "ok",
         "table": "express_checkout",
-        "version": 5,
+        "version": 1,
         "error": null
       }
     },
@@ -376,19 +368,19 @@
         "table_name": "express_checkout",
         "status": "loaded",
         "rows_loaded": 5507,
-        "verified_count": 11014
+        "verified_count": 5507
       }
     },
     {
       "step": "context_agent::register_schema_version",
       "agent": "context_agent",
-      "why": "registered table 'express_checkout' version 5 in schema_registry",
+      "why": "registered table 'express_checkout' version 1 in schema_registry",
       "input": {
         "table": "express_checkout",
-        "version": 5
+        "version": 1
       },
       "output": {
-        "version": 5
+        "version": 1
       }
     },
     {
@@ -428,7 +420,7 @@
     {
       "step": "context_agent::write_table_semantics",
       "agent": "context_agent",
-      "why": "wrote table description, concepts, and embedding (0 dims) for express_checkout into chDB table_semantics (v11)",
+      "why": "wrote table description, concepts, and embedding (0 dims) for express_checkout into chDB table_semantics (v3)",
       "input": {
         "spec_id": "01_express_checkout",
         "table": "express_checkout"
@@ -439,7 +431,7 @@
         "description": "A one-tap checkout for returning travellers. When a user with a saved payment",
         "concepts": "express checkout, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
         "embedding_dims": 0,
-        "version": 11
+        "version": 3
       }
     }
   ]

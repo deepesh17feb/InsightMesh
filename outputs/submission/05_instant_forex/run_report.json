@@ -1,16 +1,16 @@
 {
   "spec_id": "05_instant_forex",
-  "table_name": "instant_forex_orders",
-  "timestamp": "2026-08-02T03:57:48.559148+00:00",
-  "trace_id": "78887b8990db27c0bc3eae826739f21f",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/09e85835b2da67af293d072f9bd7472d",
+  "table_name": "instant_forex_add",
+  "timestamp": "2026-08-02T05:52:25.961042+00:00",
+  "trace_id": "deef94573eace05a1cfde353bc756803",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/fe11d4b77f1e8c64b996c58226c02e78",
   "run_mode": "live_run",
-  "strategy": "EVOLVE",
+  "strategy": "CREATE",
   "strategy_why": "",
-  "ddl": "CREATE TABLE IF NOT EXISTS instant_forex_orders (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    from_currency LowCardinality(String),\n    to_currency LowCardinality(String),\n    fx_rate Nullable(Float64),\n    amount Nullable(Int64),\n    addon_value_inr Nullable(Float64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
-  "mv_ddl": "-- justification: daily segment rollup for accelerated dashboard query execution\nCREATE MATERIALIZED VIEW IF NOT EXISTS instant_forex_orders_daily_mv\nENGINE = SummingMergeTree\nPARTITION BY toYYYYMM(date)\nORDER BY (device_type, os, geoip_country_code, destination, date, event)\nAS SELECT\n    toYYYYMMDD(timestamp) AS date,\n    device_type, os, geoip_country_code, destination, event,\n    count() AS total_events,\n    uniqState(user_id) AS unique_users\nFROM instant_forex_orders\nGROUP BY device_type, os, geoip_country_code, destination, date, event;",
+  "ddl": "CREATE TABLE IF NOT EXISTS instant_forex_add (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    from_currency LowCardinality(String),\n    to_currency LowCardinality(String),\n    fx_rate Nullable(Float64),\n    amount Nullable(Int64),\n    addon_value_inr Nullable(Float64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
+  "mv_ddl": "-- justification: daily segment rollup for accelerated dashboard query execution\nCREATE MATERIALIZED VIEW IF NOT EXISTS instant_forex_add_daily_mv\nENGINE = SummingMergeTree\nPARTITION BY toYYYYMM(date)\nORDER BY (device_type, os, geoip_country_code, destination, date, event)\nAS SELECT\n    toYYYYMMDD(timestamp) AS date,\n    device_type, os, geoip_country_code, destination, event,\n    count() AS total_events,\n    uniqState(user_id) AS unique_users\nFROM instant_forex_add\nGROUP BY device_type, os, geoip_country_code, destination, date, event;",
   "rows_loaded": 6237,
-  "schema_version": 2,
+  "schema_version": 1,
   "field_mapping": {
     "event": "event",
     "id": "id",
@@ -31,7 +31,7 @@
     "addon_value_inr": "addon_value_inr"
   },
   "diff_result": {
-    "table_name": "instant_forex_orders",
+    "table_name": "instant_forex_add",
     "columns_checked": [
       "event",
       "id",
@@ -57,40 +57,40 @@
       "Denominator definition conflict in 4. Metric definitions#6: > Note on funnel conversion: within the funnel, we treat **conversion as\n> `purchase_completed` users \u00f7 users who started an application**\n> (`application_started`). This is the denominator used in the drop-off dashboards."
     ],
     "gaps": [
-      "Undocumented column `app_version` in instant_forex_orders",
-      "Undocumented column `client_lib` in instant_forex_orders",
-      "Undocumented column `from_currency` in instant_forex_orders",
-      "Undocumented column `to_currency` in instant_forex_orders",
-      "Undocumented column `fx_rate` in instant_forex_orders",
-      "Undocumented column `addon_value_inr` in instant_forex_orders"
+      "Undocumented column `app_version` in instant_forex_add",
+      "Undocumented column `client_lib` in instant_forex_add",
+      "Undocumented column `from_currency` in instant_forex_add",
+      "Undocumented column `to_currency` in instant_forex_add",
+      "Undocumented column `fx_rate` in instant_forex_add",
+      "Undocumented column `addon_value_inr` in instant_forex_add"
     ],
     "additions": [
-      "instant_forex_orders.event",
-      "instant_forex_orders.id",
-      "instant_forex_orders.timestamp",
-      "instant_forex_orders.device_type",
-      "instant_forex_orders.os",
-      "instant_forex_orders.app_version",
-      "instant_forex_orders.geoip_country_code",
-      "instant_forex_orders.city",
-      "instant_forex_orders.client_lib",
-      "instant_forex_orders.user_id",
-      "instant_forex_orders.application_id",
-      "instant_forex_orders.destination",
-      "instant_forex_orders.from_currency",
-      "instant_forex_orders.to_currency",
-      "instant_forex_orders.fx_rate",
-      "instant_forex_orders.amount",
-      "instant_forex_orders.addon_value_inr"
+      "instant_forex_add.event",
+      "instant_forex_add.id",
+      "instant_forex_add.timestamp",
+      "instant_forex_add.device_type",
+      "instant_forex_add.os",
+      "instant_forex_add.app_version",
+      "instant_forex_add.geoip_country_code",
+      "instant_forex_add.city",
+      "instant_forex_add.client_lib",
+      "instant_forex_add.user_id",
+      "instant_forex_add.application_id",
+      "instant_forex_add.destination",
+      "instant_forex_add.from_currency",
+      "instant_forex_add.to_currency",
+      "instant_forex_add.fx_rate",
+      "instant_forex_add.amount",
+      "instant_forex_add.addon_value_inr"
     ]
   },
   "table_semantics": {
-    "table_name": "instant_forex_orders",
+    "table_name": "instant_forex_add",
     "spec_id": "05_instant_forex",
     "description": "At checkout, offers the traveller foreign currency (a forex card / cash order) for",
-    "concepts": "instant forex orders, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
+    "concepts": "instant forex add, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
     "embedding_dims": 0,
-    "version": 1
+    "version": 2
   },
   "reasoning_chain": [
     {
@@ -99,23 +99,18 @@
       "why": "refreshed live ClickHouse catalog (8 tables present; drift: False)",
       "input": {
         "spec_id": "05_instant_forex",
-        "table": "instant_forex_orders"
+        "table": "instant_forex_add"
       },
       "output": {
         "status": "synced",
-        "live_tables_found": 16,
+        "live_tables_found": 11,
         "tables": [
           "abandoned_checkout_recovery",
           "application_started",
           "auth_completed",
-          "clickathon.express_checkout_shown",
           "destination_card_clicked",
           "document_uploaded",
           "express_checkout",
-          "group_applications",
-          "group_family",
-          "group_family_applications",
-          "instant_forex_orders",
           "landing_page_scrolled",
           "pay_now_clicked",
           "promo_coupon_checkout",
@@ -129,7 +124,7 @@
       "agent": "context_agent",
       "why": "assembled existing table shapes from schema_registry and business metrics/rules from business_context",
       "input": {
-        "table": "instant_forex_orders"
+        "table": "instant_forex_add"
       },
       "output": {
         "existing_tables": [],
@@ -139,9 +134,9 @@
     {
       "step": "context_agent::decide_strategy",
       "agent": "context_agent",
-      "why": "strategy decided: EVOLVE",
+      "why": "strategy decided: CREATE",
       "input": {
-        "table": "instant_forex_orders",
+        "table": "instant_forex_add",
         "columns": [
           "event",
           "id",
@@ -163,9 +158,9 @@
         ]
       },
       "output": {
-        "strategy": "EVOLVE",
-        "reason": "Table `instant_forex_orders` previously registered at version 1. Proposing backward-compatible schema evolution.",
-        "target_version": 2
+        "strategy": "CREATE",
+        "reason": "Table `instant_forex_add` has no prior version registered in schema_registry. Proposing clean CREATE TABLE DDL.",
+        "target_version": 1
       }
     },
     {
@@ -174,7 +169,7 @@
       "why": "led ordering with (timestamp, user_id) for temporal granule pruning, partitioned monthly toYYYYMM, and mapped nested event fields",
       "input": {
         "spec_id": "05_instant_forex",
-        "table": "instant_forex_orders",
+        "table": "instant_forex_add",
         "sample_size": 6237
       },
       "output": {
@@ -206,13 +201,13 @@
       "agent": "query_architect",
       "why": "rendered design intent into ClickHouse MergeTree DDL, SummingMergeTree MV, and JSONEachRow INSERT",
       "input": {
-        "table": "instant_forex_orders",
-        "ddl": "CREATE TABLE IF NOT EXISTS instant_forex_orders (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    from_currency LowCardinality(String),\n    to_currency LowCardinality(String),\n    fx_rate Nullable(Float64),\n    amount Nullable(Int64),\n    addon_value_inr Nullable(Float64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;"
+        "table": "instant_forex_add",
+        "ddl": "CREATE TABLE IF NOT EXISTS instant_forex_add (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    from_currency LowCardinality(String),\n    to_currency LowCardinality(String),\n    fx_rate Nullable(Float64),\n    amount Nullable(Int64),\n    addon_value_inr Nullable(Float64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;"
       },
       "output": {
-        "ddl": "CREATE TABLE IF NOT EXISTS instant_forex_orders (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    from_currency LowCardinality(String),\n    to_currency LowCardinality(String),\n    fx_rate Nullable(Float64),\n    amount Nullable(Int64),\n    addon_value_inr Nullable(Float64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
-        "mv_ddl": "-- justification: daily segment rollup for accelerated dashboard query execution\nCREATE MATERIALIZED VIEW IF NOT EXISTS instant_forex_orders_daily_mv\nENGINE = SummingMergeTree\nPARTITION BY toYYYYMM(date)\nORDER BY (device_type, os, geoip_country_code, destination, date, event)\nAS SELECT\n    toYYYYMMDD(timestamp) AS date,\n    device_type, os, geoip_country_code, destination, event,\n    count() AS total_events,\n    uniqState(user_id) AS unique_users\nFROM instant_forex_orders\nGROUP BY device_type, os, geoip_country_code, destination, date, event;",
-        "insert_sql": "INSERT INTO instant_forex_orders FORMAT JSONEachRow"
+        "ddl": "CREATE TABLE IF NOT EXISTS instant_forex_add (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    from_currency LowCardinality(String),\n    to_currency LowCardinality(String),\n    fx_rate Nullable(Float64),\n    amount Nullable(Int64),\n    addon_value_inr Nullable(Float64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
+        "mv_ddl": "-- justification: daily segment rollup for accelerated dashboard query execution\nCREATE MATERIALIZED VIEW IF NOT EXISTS instant_forex_add_daily_mv\nENGINE = SummingMergeTree\nPARTITION BY toYYYYMM(date)\nORDER BY (device_type, os, geoip_country_code, destination, date, event)\nAS SELECT\n    toYYYYMMDD(timestamp) AS date,\n    device_type, os, geoip_country_code, destination, event,\n    count() AS total_events,\n    uniqState(user_id) AS unique_users\nFROM instant_forex_add\nGROUP BY device_type, os, geoip_country_code, destination, date, event;",
+        "insert_sql": "INSERT INTO instant_forex_add FORMAT JSONEachRow"
       }
     },
     {
@@ -220,7 +215,7 @@
       "agent": "validator",
       "why": "verified 4 ClickHouse invariants (violations: 0)",
       "input": {
-        "ddl": "CREATE TABLE IF NOT EXISTS instant_forex_orders (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    from_currency LowCardinality(String),\n    to_currency LowCardinality(String),\n    fx_rate Nullable(Float64),\n    amount Nullable(Int64),\n    addon_value_inr Nullable(Float64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;"
+        "ddl": "CREATE TABLE IF NOT EXISTS instant_forex_add (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    from_currency LowCardinality(String),\n    to_currency LowCardinality(String),\n    fx_rate Nullable(Float64),\n    amount Nullable(Int64),\n    addon_value_inr Nullable(Float64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;"
       },
       "output": {
         "violations": [],
@@ -232,7 +227,7 @@
       "agent": "context_agent",
       "why": "audited context: 17 additions, 3 conflicts, 6 gaps",
       "input": {
-        "table": "instant_forex_orders",
+        "table": "instant_forex_add",
         "columns": [
           "event",
           "id",
@@ -254,7 +249,7 @@
         ]
       },
       "output": {
-        "table_name": "instant_forex_orders",
+        "table_name": "instant_forex_add",
         "columns_checked": [
           "event",
           "id",
@@ -280,31 +275,31 @@
           "Denominator definition conflict in 4. Metric definitions#6: > Note on funnel conversion: within the funnel, we treat **conversion as\n> `purchase_completed` users \u00f7 users who started an application**\n> (`application_started`). This is the denominator used in the drop-off dashboards."
         ],
         "gaps": [
-          "Undocumented column `app_version` in instant_forex_orders",
-          "Undocumented column `client_lib` in instant_forex_orders",
-          "Undocumented column `from_currency` in instant_forex_orders",
-          "Undocumented column `to_currency` in instant_forex_orders",
-          "Undocumented column `fx_rate` in instant_forex_orders",
-          "Undocumented column `addon_value_inr` in instant_forex_orders"
+          "Undocumented column `app_version` in instant_forex_add",
+          "Undocumented column `client_lib` in instant_forex_add",
+          "Undocumented column `from_currency` in instant_forex_add",
+          "Undocumented column `to_currency` in instant_forex_add",
+          "Undocumented column `fx_rate` in instant_forex_add",
+          "Undocumented column `addon_value_inr` in instant_forex_add"
         ],
         "additions": [
-          "instant_forex_orders.event",
-          "instant_forex_orders.id",
-          "instant_forex_orders.timestamp",
-          "instant_forex_orders.device_type",
-          "instant_forex_orders.os",
-          "instant_forex_orders.app_version",
-          "instant_forex_orders.geoip_country_code",
-          "instant_forex_orders.city",
-          "instant_forex_orders.client_lib",
-          "instant_forex_orders.user_id",
-          "instant_forex_orders.application_id",
-          "instant_forex_orders.destination",
-          "instant_forex_orders.from_currency",
-          "instant_forex_orders.to_currency",
-          "instant_forex_orders.fx_rate",
-          "instant_forex_orders.amount",
-          "instant_forex_orders.addon_value_inr"
+          "instant_forex_add.event",
+          "instant_forex_add.id",
+          "instant_forex_add.timestamp",
+          "instant_forex_add.device_type",
+          "instant_forex_add.os",
+          "instant_forex_add.app_version",
+          "instant_forex_add.geoip_country_code",
+          "instant_forex_add.city",
+          "instant_forex_add.client_lib",
+          "instant_forex_add.user_id",
+          "instant_forex_add.application_id",
+          "instant_forex_add.destination",
+          "instant_forex_add.from_currency",
+          "instant_forex_add.to_currency",
+          "instant_forex_add.fx_rate",
+          "instant_forex_add.amount",
+          "instant_forex_add.addon_value_inr"
         ]
       }
     },
@@ -313,27 +308,27 @@
       "agent": "context_agent",
       "why": "executed CREATE TABLE and CREATE MATERIALIZED VIEW on ClickHouse Cloud with rollback guarantee",
       "input": {
-        "table": "instant_forex_orders",
-        "ddl": "CREATE TABLE IF NOT EXISTS instant_forex_orders (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    from_currency LowCardinality(String),\n    to_currency LowCardinality(String),\n    fx_rate Nullable(Float64),\n    amount Nullable(Int64),\n    addon_value_inr Nullable(Float64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
+        "table": "instant_forex_add",
+        "ddl": "CREATE TABLE IF NOT EXISTS instant_forex_add (\n    event LowCardinality(String),\n    id String,\n    timestamp DateTime,\n    device_type LowCardinality(String),\n    os LowCardinality(String),\n    app_version LowCardinality(String),\n    geoip_country_code LowCardinality(String),\n    city LowCardinality(String),\n    client_lib LowCardinality(String),\n    user_id String,\n    application_id String,\n    destination String,\n    from_currency LowCardinality(String),\n    to_currency LowCardinality(String),\n    fx_rate Nullable(Float64),\n    amount Nullable(Int64),\n    addon_value_inr Nullable(Float64)\n) ENGINE = MergeTree\nPARTITION BY toYYYYMM(timestamp)\nPRIMARY KEY (timestamp, user_id)\nORDER BY (timestamp, user_id)\nTTL timestamp + INTERVAL 12 MONTH\nSETTINGS index_granularity = 8192;",
         "dry_run": false
       },
       "output": {
         "status": "ok",
-        "table": "instant_forex_orders",
-        "version": 2,
+        "table": "instant_forex_add",
+        "version": 1,
         "error": null
       }
     },
     {
       "step": "context_agent::load_events",
       "agent": "context_agent",
-      "why": "loaded 6,237 events from events.ndjson into ClickHouse Cloud table instant_forex_orders",
+      "why": "loaded 6,237 events from events.ndjson into ClickHouse Cloud table instant_forex_add",
       "input": {
-        "table": "instant_forex_orders",
+        "table": "instant_forex_add",
         "spec_id": "05_instant_forex"
       },
       "output": {
-        "table_name": "instant_forex_orders",
+        "table_name": "instant_forex_add",
         "status": "loaded",
         "rows_loaded": 6237,
         "verified_count": 6237
@@ -342,13 +337,13 @@
     {
       "step": "context_agent::register_schema_version",
       "agent": "context_agent",
-      "why": "registered table 'instant_forex_orders' version 2 in schema_registry",
+      "why": "registered table 'instant_forex_add' version 1 in schema_registry",
       "input": {
-        "table": "instant_forex_orders",
-        "version": 2
+        "table": "instant_forex_add",
+        "version": 1
       },
       "output": {
-        "version": 2
+        "version": 1
       }
     },
     {
@@ -357,23 +352,23 @@
       "why": "upserted 17 attributes into business_context and context_changelog with trace attribution",
       "input": {
         "additions": [
-          "instant_forex_orders.event",
-          "instant_forex_orders.id",
-          "instant_forex_orders.timestamp",
-          "instant_forex_orders.device_type",
-          "instant_forex_orders.os",
-          "instant_forex_orders.app_version",
-          "instant_forex_orders.geoip_country_code",
-          "instant_forex_orders.city",
-          "instant_forex_orders.client_lib",
-          "instant_forex_orders.user_id",
-          "instant_forex_orders.application_id",
-          "instant_forex_orders.destination",
-          "instant_forex_orders.from_currency",
-          "instant_forex_orders.to_currency",
-          "instant_forex_orders.fx_rate",
-          "instant_forex_orders.amount",
-          "instant_forex_orders.addon_value_inr"
+          "instant_forex_add.event",
+          "instant_forex_add.id",
+          "instant_forex_add.timestamp",
+          "instant_forex_add.device_type",
+          "instant_forex_add.os",
+          "instant_forex_add.app_version",
+          "instant_forex_add.geoip_country_code",
+          "instant_forex_add.city",
+          "instant_forex_add.client_lib",
+          "instant_forex_add.user_id",
+          "instant_forex_add.application_id",
+          "instant_forex_add.destination",
+          "instant_forex_add.from_currency",
+          "instant_forex_add.to_currency",
+          "instant_forex_add.fx_rate",
+          "instant_forex_add.amount",
+          "instant_forex_add.addon_value_inr"
         ]
       },
       "output": {
@@ -384,18 +379,18 @@
     {
       "step": "context_agent::write_table_semantics",
       "agent": "context_agent",
-      "why": "wrote table description, concepts, and embedding (0 dims) for instant_forex_orders into chDB table_semantics (v1)",
+      "why": "wrote table description, concepts, and embedding (0 dims) for instant_forex_add into chDB table_semantics (v2)",
       "input": {
         "spec_id": "05_instant_forex",
-        "table": "instant_forex_orders"
+        "table": "instant_forex_add"
       },
       "output": {
-        "table_name": "instant_forex_orders",
+        "table_name": "instant_forex_add",
         "spec_id": "05_instant_forex",
         "description": "At checkout, offers the traveller foreign currency (a forex card / cash order) for",
-        "concepts": "instant forex orders, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
+        "concepts": "instant forex add, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
         "embedding_dims": 0,
-        "version": 1
+        "version": 2
       }
     }
   ]

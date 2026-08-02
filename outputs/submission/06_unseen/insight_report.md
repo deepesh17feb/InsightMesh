@@ -49,5 +49,5 @@ GROUP BY event
 ORDER BY event_count DESC
 ```
 
-🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/428e61906572500180888d4ccb4d4ef4
+🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/2a15b7718580257292ff33da002b752d
 📄 `outputs/submission/06_unseen/insight_report.md`

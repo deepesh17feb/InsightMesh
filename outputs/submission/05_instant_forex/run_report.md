@@ -1,15 +1,15 @@
 # CUJ 1 Ingestion Run Report — `05_instant_forex`
 
-- **Target Table:** `instant_forex_orders`
-- **Execution Timestamp:** `2026-08-02T03:57:48.559096+00:00`
-- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/09e85835b2da67af293d072f9bd7472d
+- **Target Table:** `instant_forex_add`
+- **Execution Timestamp:** `2026-08-02T05:52:25.960986+00:00`
+- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/fe11d4b77f1e8c64b996c58226c02e78
 - **Run Mode:** `live_run`
 
 ---
 
 ## 1. What was decided
 
-- **Strategy:** `EVOLVE`
+- **Strategy:** `CREATE`
 - **Rationale:** 
 
 ---
@@ -52,7 +52,7 @@
 ## 4. Materialized View
 
 -- justification: daily segment rollup for accelerated dashboard query execution
-CREATE MATERIALIZED VIEW IF NOT EXISTS instant_forex_orders_daily_mv
+CREATE MATERIALIZED VIEW IF NOT EXISTS instant_forex_add_daily_mv
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(date)
 ORDER BY (device_type, os, geoip_country_code, destination, date, event)
@@ -61,14 +61,14 @@ AS SELECT
     device_type, os, geoip_country_code, destination, event,
     count() AS total_events,
     uniqState(user_id) AS unique_users
-FROM instant_forex_orders
+FROM instant_forex_add
 GROUP BY device_type, os, geoip_country_code, destination, date, event;
 
 ---
 
 ## 5. Context audit
 
-- **Discovered Attributes (17):** instant_forex_orders.event, instant_forex_orders.id, instant_forex_orders.timestamp, instant_forex_orders.device_type, instant_forex_orders.os, instant_forex_orders.app_version, instant_forex_orders.geoip_country_code, instant_forex_orders.city, instant_forex_orders.client_lib, instant_forex_orders.user_id, instant_forex_orders.application_id, instant_forex_orders.destination, instant_forex_orders.from_currency, instant_forex_orders.to_currency, instant_forex_orders.fx_rate, instant_forex_orders.amount, instant_forex_orders.addon_value_inr
+- **Discovered Attributes (17):** instant_forex_add.event, instant_forex_add.id, instant_forex_add.timestamp, instant_forex_add.device_type, instant_forex_add.os, instant_forex_add.app_version, instant_forex_add.geoip_country_code, instant_forex_add.city, instant_forex_add.client_lib, instant_forex_add.user_id, instant_forex_add.application_id, instant_forex_add.destination, instant_forex_add.from_currency, instant_forex_add.to_currency, instant_forex_add.fx_rate, instant_forex_add.amount, instant_forex_add.addon_value_inr
 - **Conflicts Detected (3):** Denominator definition conflict in 3. The eight raw event tables#1: | Table | Kind | Emitted when | Key event-specific columns |
 |-------|------|--------------|----------------------------|
 | `destination_card_clicked` | funnel | user taps a destination card | `destination`, `visa_type`, `card_type`, `flow` |
@@ -82,14 +82,14 @@ GROUP BY device_type, os, geoip_country_code, destination, date, event;
 app-open / web visit. This is the headline number reported to leadership.; Denominator definition conflict in 4. Metric definitions#6: > Note on funnel conversion: within the funnel, we treat **conversion as
 > `purchase_completed` users ÷ users who started an application**
 > (`application_started`). This is the denominator used in the drop-off dashboards.
-- **Documentation Gaps (6):** Undocumented column `app_version` in instant_forex_orders; Undocumented column `client_lib` in instant_forex_orders; Undocumented column `from_currency` in instant_forex_orders; Undocumented column `to_currency` in instant_forex_orders; Undocumented column `fx_rate` in instant_forex_orders; Undocumented column `addon_value_inr` in instant_forex_orders
+- **Documentation Gaps (6):** Undocumented column `app_version` in instant_forex_add; Undocumented column `client_lib` in instant_forex_add; Undocumented column `from_currency` in instant_forex_add; Undocumented column `to_currency` in instant_forex_add; Undocumented column `fx_rate` in instant_forex_add; Undocumented column `addon_value_inr` in instant_forex_add
 
 ---
 
 ## 6. Table Semantics (CUJ 1 → CUJ 2 Semantic Handoff)
 
 - **Description:** At checkout, offers the traveller foreign currency (a forex card / cash order) for
-- **Concepts:** instant forex orders, event, id, device_type, os, app_version, geoip_country_code, city, client_lib
+- **Concepts:** instant forex add, event, id, device_type, os, app_version, geoip_country_code, city, client_lib
 - **Embedding Dimensions:** `0`
 
 ---
@@ -98,7 +98,7 @@ app-open / web visit. This is the headline number reported to leadership.; Denom
 
 - **DDL Execution:** `ok`
 - **Rows Loaded:** **6,237** rows from `events.ndjson`
-- **Schema Registry Version:** `2`
+- **Schema Registry Version:** `1`
 - **Context Upserts:** `17` entries
 
 ---
@@ -107,13 +107,13 @@ app-open / web visit. This is the headline number reported to leadership.; Denom
 
 1. **context_agent::refresh_chdb_from_live** (context_agent): refreshed live ClickHouse catalog (8 tables present; drift: False)
 2. **context_agent::build_context_package** (context_agent): assembled existing table shapes from schema_registry and business metrics/rules from business_context
-3. **context_agent::decide_strategy** (context_agent): strategy decided: EVOLVE
+3. **context_agent::decide_strategy** (context_agent): strategy decided: CREATE
 4. **instrumentation_agent::design_schema** (instrumentation_agent): led ordering with (timestamp, user_id) for temporal granule pruning, partitioned monthly toYYYYMM, and mapped nested event fields
 5. **query_architect::design_to_ddl** (query_architect): rendered design intent into ClickHouse MergeTree DDL, SummingMergeTree MV, and JSONEachRow INSERT
 6. **validator::invariant_check** (validator): verified 4 ClickHouse invariants (violations: 0)
 7. **context_agent::context_diff** (context_agent): audited context: 17 additions, 3 conflicts, 6 gaps
 8. **context_agent::execute_ddl** (context_agent): executed CREATE TABLE and CREATE MATERIALIZED VIEW on ClickHouse Cloud with rollback guarantee
-9. **context_agent::load_events** (context_agent): loaded 6,237 events from events.ndjson into ClickHouse Cloud table instant_forex_orders
-10. **context_agent::register_schema_version** (context_agent): registered table 'instant_forex_orders' version 2 in schema_registry
+9. **context_agent::load_events** (context_agent): loaded 6,237 events from events.ndjson into ClickHouse Cloud table instant_forex_add
+10. **context_agent::register_schema_version** (context_agent): registered table 'instant_forex_add' version 1 in schema_registry
 11. **context_agent::sync_context** (context_agent): upserted 17 attributes into business_context and context_changelog with trace attribution
-12. **context_agent::write_table_semantics** (context_agent): wrote table description, concepts, and embedding (0 dims) for instant_forex_orders into chDB table_semantics (v1)
+12. **context_agent::write_table_semantics** (context_agent): wrote table description, concepts, and embedding (0 dims) for instant_forex_add into chDB table_semantics (v2)

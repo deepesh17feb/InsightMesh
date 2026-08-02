@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 
 from atlys_agentic import paths, tools
 
-load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env")
-load_dotenv(paths.REPO_ROOT / ".env")
+load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env", override=True)
+load_dotenv(paths.REPO_ROOT / ".env", override=True)
 
 try:
     from crewai import Agent, LLM

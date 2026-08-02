@@ -1,15 +1,3 @@
-# PM Insight Report — Express Checkout (`01_express_checkout`)
-
-**Diagnostic Question:** What is the checkout conversion rate for users who entered express checkout, broken down by device type and payment method?  
-**Target Table:** `None`  
-**Evaluation Timestamp:** 2026-08-02T03:55:03.517261+00:00  
-**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/1f552c04e3c1dcc47c74fa80e847ae5b  
-**Calibrated Confidence Score:** None
-
----
-
-## Executive Summary & Diagnostic Breakdown
-
 ### Express Checkout — conversion rate analysis
 
 **Interpretation:** `conversion_rate` on `express_checkout`, evaluated across 5 standard cuts (device, geo, destination, funnel stage, user segment).
@@ -49,18 +37,7 @@ GROUP BY device_type, geoip_country_code
 ORDER BY total_events DESC LIMIT 5
 ```
 
-🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/1f552c04e3c1dcc47c74fa80e847ae5b
-📄 `outputs/submission/01_express_checkout/insight_report.md`
+🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/9767b1e4a3a44a47a379fb1c4bf00dbd
+📄 `outputs/submission/spec_01/insight_report.md`
 
-<!-- atlys:insight table=express_checkout metric=conversion_rate finding_key=express_checkout::conversion_rate::device_type::ios trace=1f552c04e3c1dcc47c74fa80e847ae5b -->
-
----
-
-### ClickHouse Query Execution & Signal Derivation
-- **Resolved Table Engine:** `None` (Classification: `raw`)
-- **Queries Executed:** 0 ClickHouse Cloud SQL statements
-- **Anomalies / Signals Derived:** 0
-- **Context Governance:** Synchronized with living `chDB` metadata and registered table semantics.
-
----
-*Generated autonomously by Atlys Product Analyst Agent (CUJ 2) via ClickHouse Cloud.*
+<!-- atlys:insight table=express_checkout metric=conversion_rate finding_key=express_checkout::conversion_rate::device_type::ios trace=9767b1e4a3a44a47a379fb1c4bf00dbd -->

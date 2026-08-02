@@ -5,10 +5,18 @@ from dotenv import load_dotenv
 
 from atlys_agentic import paths
 
-load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env")
-load_dotenv(paths.REPO_ROOT / ".env")
+load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env", override=True)
+load_dotenv(paths.REPO_ROOT / ".env", override=True)
 
 _client = None
+_client_db = None
+
+
+def reset_client() -> None:
+    """Reset the cached ClickHouse client instance."""
+    global _client, _client_db
+    _client = None
+    _client_db = None
 
 
 import base64
@@ -75,14 +83,14 @@ class _HttpClient:
 
 
 def get_client():
-    global _client
-    if _client is None:
+    global _client, _client_db
+    database = os.environ.get("CLICKHOUSE_DATABASE", "default")
+    if _client is None or _client_db != database:
         host = os.environ.get("CLICKHOUSE_HOST", "localhost")
         port = int(os.environ.get("CLICKHOUSE_PORT", "8443"))
         username = os.environ.get("CLICKHOUSE_USER", "default")
         password = os.environ.get("CLICKHOUSE_PASSWORD", "")
         secure = os.environ.get("CLICKHOUSE_SECURE", "true").lower() == "true"
-        database = os.environ.get("CLICKHOUSE_DATABASE", "default")
         try:
             import clickhouse_connect
             _client = clickhouse_connect.get_client(
@@ -102,6 +110,7 @@ def get_client():
                 secure=secure,
                 database=database,
             )
+        _client_db = database
     return _client
 
 

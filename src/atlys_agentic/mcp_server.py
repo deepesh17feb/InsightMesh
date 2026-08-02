@@ -16,8 +16,8 @@ from mcp.server.fastmcp import FastMCP
 
 from atlys_agentic import ch_client, chdb_client, paths, tracing
 
-load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env")
-load_dotenv(paths.REPO_ROOT / ".env")
+load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env", override=True)
+load_dotenv(paths.REPO_ROOT / ".env", override=True)
 
 mcp_server = FastMCP("clickhouse-mcp")
 

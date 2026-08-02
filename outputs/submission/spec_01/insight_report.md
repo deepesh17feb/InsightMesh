@@ -37,7 +37,7 @@ GROUP BY device_type, geoip_country_code
 ORDER BY total_events DESC LIMIT 5
 ```
 
-🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/b8c02145c61ec30ecdb939c4c675015c
+🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/9767b1e4a3a44a47a379fb1c4bf00dbd
 📄 `outputs/submission/spec_01/insight_report.md`
 
-<!-- atlys:insight table=express_checkout metric=conversion_rate finding_key=express_checkout::conversion_rate::device_type::ios trace=b8c02145c61ec30ecdb939c4c675015c -->
+<!-- atlys:insight table=express_checkout metric=conversion_rate finding_key=express_checkout::conversion_rate::device_type::ios trace=9767b1e4a3a44a47a379fb1c4bf00dbd -->

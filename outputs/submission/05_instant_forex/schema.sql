@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS instant_forex_orders (
+CREATE TABLE IF NOT EXISTS instant_forex_add (
     event LowCardinality(String),
     id String,
     timestamp DateTime,
@@ -24,7 +24,7 @@ TTL timestamp + INTERVAL 12 MONTH
 SETTINGS index_granularity = 8192;
 
 -- justification: daily segment rollup for accelerated dashboard query execution
-CREATE MATERIALIZED VIEW IF NOT EXISTS instant_forex_orders_daily_mv
+CREATE MATERIALIZED VIEW IF NOT EXISTS instant_forex_add_daily_mv
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(date)
 ORDER BY (device_type, os, geoip_country_code, destination, date, event)
@@ -33,5 +33,5 @@ AS SELECT
     device_type, os, geoip_country_code, destination, event,
     count() AS total_events,
     uniqState(user_id) AS unique_users
-FROM instant_forex_orders
+FROM instant_forex_add
 GROUP BY device_type, os, geoip_country_code, destination, date, event;

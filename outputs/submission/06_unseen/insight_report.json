@@ -94,7 +94,7 @@
           },
           {
             "table_name": "promo_coupon_checkout",
-            "spec_id": "06_unseen",
+            "spec_id": "unseen_data",
             "description": "This is the **unseen sixth spec** promised in [`PROBLEM_STATEMENT.md`](../PROBLEM_STATEMENT.md): same format as the five known specs, same fictional universe, released to all teams simultaneously. Push it through your pipeline end to end \u2014 the output must come from your system, evidenced by the trace. **No trace, no credit.**",
             "concepts": "promo coupon checkout, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
             "dist": 0.8235,
@@ -102,7 +102,7 @@
           },
           {
             "table_name": "promo_coupon_checkout",
-            "spec_id": "unseen_data",
+            "spec_id": "06_unseen",
             "description": "This is the **unseen sixth spec** promised in [`PROBLEM_STATEMENT.md`](../PROBLEM_STATEMENT.md): same format as the five known specs, same fictional universe, released to all teams simultaneously. Push it through your pipeline end to end \u2014 the output must come from your system, evidenced by the trace. **No trace, no credit.**",
             "concepts": "promo coupon checkout, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
             "dist": 0.8235,
@@ -297,6 +297,6 @@
       "why": "Persisted insight record with finding_key 'promo_coupon_checkout::step_through_rate::device_type::ios' to chDB insights table for cross-question trend continuity."
     }
   ],
-  "trace_id": "428e61906572500180888d4ccb4d4ef4",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/428e61906572500180888d4ccb4d4ef4"
+  "trace_id": "2a15b7718580257292ff33da002b752d",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/2a15b7718580257292ff33da002b752d"
 }

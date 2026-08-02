@@ -1,8 +1,8 @@
 # CUJ 1 Ingestion Run Report — `06_unseen`
 
 - **Target Table:** `promo_coupon_checkout`
-- **Execution Timestamp:** `2026-08-02T05:06:41.820584+00:00`
-- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/162e29ed0e2ec6108a7e8b706773d977
+- **Execution Timestamp:** `2026-08-02T05:42:54.947374+00:00`
+- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/b8c701ff0f99633367b5bb437b659d91
 - **Run Mode:** `live_run`
 
 ---
@@ -100,7 +100,7 @@ app-open / web visit. This is the headline number reported to leadership.; Denom
 
 - **DDL Execution:** `ok`
 - **Rows Loaded:** **5,363** rows from `events.ndjson`
-- **Schema Registry Version:** `2`
+- **Schema Registry Version:** `3`
 - **Context Upserts:** `19` entries
 
 ---
@@ -116,6 +116,6 @@ app-open / web visit. This is the headline number reported to leadership.; Denom
 7. **context_agent::context_diff** (context_agent): audited context: 19 additions, 3 conflicts, 8 gaps
 8. **context_agent::execute_ddl** (context_agent): executed CREATE TABLE and CREATE MATERIALIZED VIEW on ClickHouse Cloud with rollback guarantee
 9. **context_agent::load_events** (context_agent): loaded 5,363 events from events.ndjson into ClickHouse Cloud table promo_coupon_checkout
-10. **context_agent::register_schema_version** (context_agent): registered table 'promo_coupon_checkout' version 2 in schema_registry
+10. **context_agent::register_schema_version** (context_agent): registered table 'promo_coupon_checkout' version 3 in schema_registry
 11. **context_agent::sync_context** (context_agent): upserted 19 attributes into business_context and context_changelog with trace attribution
-12. **context_agent::write_table_semantics** (context_agent): wrote table description, concepts, and embedding (0 dims) for promo_coupon_checkout into chDB table_semantics (v12)
+12. **context_agent::write_table_semantics** (context_agent): wrote table description, concepts, and embedding (0 dims) for promo_coupon_checkout into chDB table_semantics (v15)
