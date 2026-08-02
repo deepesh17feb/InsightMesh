@@ -1,4 +1,4 @@
-# InsightMesh — Atlys Agentic Analytics System
+# Surfer AI — Atlys Agentic Analytics System
 ### Click-a-thon 2026 Official Submission (`click-a-thon-26-submissions`)
 **Track:** Atlys — *"From feature spec to insight: agents that instrument, analyze, and explain."*  
 **Team / Project:** InsightMesh (`deepesh17feb/InsightMesh`)  
@@ -8,7 +8,7 @@
 
 ## 🌟 Executive Overview
 
-**InsightMesh** is an enterprise-grade, multi-agent data engineering and product analytics platform built for **Atlys**. It completely automates the manual lifecycle from product feature specification (`spec.md`) and raw event logs (`events.ndjson`) to production-grade ClickHouse telemetry schemas, self-evolving semantic metadata, and PM-actionable diagnostic insights.
+**InsightMesh** from Surfer AI is an enterprise-grade, multi-agent data engineering and product analytics platform built for **Atlys**. It completely automates the manual lifecycle from product feature specification (`spec.md`) and raw event logs (`events.ndjson`) to production-grade ClickHouse telemetry schemas, self-evolving semantic metadata, and PM-actionable diagnostic insights.
 
 ```
                    ┌───────────────────────────────────────────────────────────┐
