@@ -16,7 +16,6 @@
 
 - **LibreChat Web Interface:** `http://localhost:3080` (Docker Compose stack in `src/atlys_agentic/librechat/`)
 - **FastAPI Backend & Chat Gateway:** `http://localhost:8008` (OpenAI-compatible `/v1/chat/completions` endpoint)
-- **Live Ingestion Web Portal:** `http://localhost:8008/ui/ingestion`
 - **Langfuse Semantic Tracing Project:** [Langfuse Project Dashboard](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9)
 
 ---
@@ -38,7 +37,7 @@ InsightMesh from Surfer AI is an enterprise-grade agentic data platform that col
                     ┌───────────────────────────────────────────────────────────┐
                     │                    InsightMesh Engine                     │
                     ├─────────────────────────────┬─────────────────────────────┤
-                    │  ClickHouse Cloud ('default')│  2.5M Events Analytical DB  │
+                    │ ClickHouse Cloud ('default')│  2.5M Events Analytical DB  │
                     │  chDB (In-Process SQL)      │  Living Context & Vectors   │
                     │  CrewAI Flows               │  Deterministic Workflows    │
                     │  LibreChat                  │  Dual Persona Chat Interface│
