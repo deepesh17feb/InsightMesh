@@ -224,24 +224,21 @@ def chat_completions(req: ChatCompletionRequest):
             else:
                 content = conversational_ingestion.INSTRUMENTATION_SCOPE_NOTICE_MD
         else:
-            # CUJ 2: Dedicated Product Analyst
+            # CUJ 2: Dedicated Analytics Agent
             if intent == "GREETING":
                 content = prompts.GREETING_RESPONSE_MD
             elif intent in ("INGESTION_PROPOSAL", "LIST_SPECS", "HITL_APPROVE", "INGESTION_FOLLOWUP"):
                 content = conversational_ingestion.ANALYST_SCOPE_NOTICE_MD
             else:
                 result = analysis_flow.run(question=question, spec_id="chat", base_sql=_DEFAULT_BASE_SQL)
-                content = (
-                    f"{result['answer_md']}\n\n"
-                    f"_confidence: {result['confidence'].get('score')} · trace: {result['trace_id']}_"
-                )
+                content = result.get("answer_md", "")
 
         tracing.span(
             trace_id,
             "chat_completions",
             {"question": question, "model": req.model, "intent": intent},
             {"content": content[:100]},
-            metadata={"client": "librechat_client", "intent": intent},
+            metadata={"client": "librechat_client", "intent": intent, "agent": "analytics_agent"},
             run_mode="librechat_client",
         )
 

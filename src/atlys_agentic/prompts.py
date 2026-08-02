@@ -58,23 +58,163 @@ I am specialized in Atlys product analytics, ClickHouse event streams, and featu
 Please ask a question regarding Atlys feature funnels, conversion rates, or telemetry anomalies."""
 
 
+def build_resolve_and_answerability_prompt(
+    question: str,
+    candidates_info: list[dict],
+    business_context_info: dict,
+) -> str:
+    """Construct prompt for Context Agent Phase 2+3 (Resolve Table and Answerability)."""
+    candidates_text = ""
+    for idx, c in enumerate(candidates_info, 1):
+        candidates_text += (
+            f"Candidate {idx}:\n"
+            f"  Table: {c.get('table_name')}\n"
+            f"  Spec ID: {c.get('spec_id')}\n"
+            f"  Description: {c.get('description')}\n"
+            f"  Columns: {', '.join(c.get('columns', []))}\n"
+            f"  Metrics / Formulas: {c.get('metrics', [])}\n"
+            f"  Caveats: {c.get('caveats', [])}\n\n"
+        )
+
+    return (
+        "You are the Context Agent in the Atlys Multi-Agent Analytics Mesh.\n"
+        "Your role: Evaluate the user's analytical question against candidate instrumented tables, "
+        "resolve which table answers it, and determine answerability (yes, partial, no) BEFORE any query runs.\n\n"
+        f"User Question: '{question}'\n\n"
+        f"Candidate Tables (top semantic matches):\n{candidates_text}\n"
+        f"General Business Context & Metric Boundaries:\n"
+        f"Rules/Metrics: {business_context_info.get('metrics_and_rules', [])[:10]}\n"
+        f"Caveats: {business_context_info.get('caveats', [])[:5]}\n\n"
+        "CRITICAL RULES:\n"
+        "1. Check metric boundaries: Post-purchase fulfilment metrics (delivery status, courier SLAs) CANNOT be derived from pre-purchase funnel telemetry. If requested metrics are absent, answerable MUST be 'no'.\n"
+        "2. If answerable is 'no', explain honestly in 'missing' and 'why', without fabricating data.\n"
+        "3. If multiple denominator definitions exist in business_context (e.g. v2 vs v3), record the primary used and describe the conflict in 'denominator_conflict'.\n"
+        "4. Identify the 5 required cuts: device, geo, destination, funnel stage (e.g. event), and user segment (e.g. is_guest, user cohort).\n\n"
+        "Output strictly valid JSON with keys:\n"
+        "{\n"
+        '  "chosen_table": "table_name",\n'
+        '  "spec_id": "spec_id",\n'
+        '  "answerable": "yes" | "partial" | "no",\n'
+        '  "interpretation": "One-line clear description of what is actually computed, metric and denominator",\n'
+        '  "metric": "conversion_rate" | "dropoff_rate" | "latency" | etc,\n'
+        '  "denominator_used": "e.g. application_started",\n'
+        '  "denominator_conflict": "e.g. business_context v2 also defines this as / sessions" | null,\n'
+        '  "missing": ["e.g. no delivery_status column — post-purchase metrics not derivable here"],\n'
+        '  "required_cuts": ["device_type", "geoip_country_code", "destination", "event", "is_guest"],\n'
+        '  "why": "One sentence explaining why this table was chosen and whether it answers the intent"\n'
+        "}"
+    )
+
+
+def build_query_architect_plan_prompt(
+    question: str,
+    interpretation: dict,
+    table_name: str,
+    columns: list[str],
+    probe_summary: dict,
+    caveats: list[str],
+) -> str:
+    """Construct prompt for Query Architect Phase 5 (Translate Interpretation to 8 SELECT Statements)."""
+    return (
+        "You are the Query Architect in the Atlys Analytics Mesh.\n"
+        "Your sole responsibility is translating the analytical interpretation into strictly read-only SELECT statements.\n"
+        "You NEVER modify data or access databases directly.\n\n"
+        f"User Question: '{question}'\n"
+        f"Resolved Table: `{table_name}`\n"
+        f"Available Columns: {', '.join(columns)}\n"
+        f"Interpretation: {interpretation.get('interpretation', '')}\n"
+        f"Metric: {interpretation.get('metric', '')}\n"
+        f"Denominator Used: {interpretation.get('denominator_used', '')}\n"
+        f"Denominator Conflict: {interpretation.get('denominator_conflict', '')}\n"
+        f"Live Probe Summary (date range, row counts): {probe_summary}\n"
+        f"Caveats to apply: {caveats}\n\n"
+        "Generate ClickHouse SELECT queries for:\n"
+        "1. 5 cuts: device_type, geoip_country_code, destination, funnel stage (event), user segment (is_guest/cohort)\n"
+        "2. 1 intersection query: cross-dimension breakdown (e.g. device_type x geoip_country_code)\n"
+        "3. 1 headline alternative denominator query (if conflict exists, else baseline count)\n"
+        "4. 1 baseline metric query\n"
+        "5. 1 timeseries query: daily trend (toDate(timestamp) AS date)\n\n"
+        "Output strictly valid JSON with key 'queries' containing an array of objects:\n"
+        "[\n"
+        '  {"purpose": "cut:device_type", "sql": "SELECT ..."},'
+        '  {"purpose": "cut:geoip_country_code", "sql": "SELECT ..."},'
+        '  {"purpose": "cut:destination", "sql": "SELECT ..."},'
+        '  {"purpose": "cut:funnel_stage", "sql": "SELECT ..."},'
+        '  {"purpose": "cut:user_segment", "sql": "SELECT ..."},'
+        '  {"purpose": "intersection", "sql": "SELECT ..."},'
+        '  {"purpose": "headline_alt", "sql": "SELECT ..."},'
+        '  {"purpose": "baseline", "sql": "SELECT ..."},'
+        '  {"purpose": "timeseries", "sql": "SELECT ..."}'
+        "]"
+    )
+
+
 def build_analytics_agent_synthesis_prompt(
     question: str,
-    spec_id: str,
-    table_name: str,
-    known_issue: str,
-    cuts: dict,
+    interpretation: dict,
+    headline: dict,
+    cuts_summary: dict,
+    correlation: dict,
+    timing_k_match: dict,
+    context_applied: dict,
+    trend_info: dict,
     confidence: dict,
 ) -> str:
-    """Construct prompt for Analytics Agent Gemini synthesis."""
+    """Construct prompt for Analytics Agent Phase 10 Synthesis."""
     return (
-        f"You are the Analytics Agent at Atlys diagnosing a production telemetry question.\n"
+        "You are the Analytics Agent at Atlys synthesizing a high-impact, PM-actionable insight report.\n"
+        "Follow the locked format in docs/CUJ2.md Section 9:\n"
+        "- Objective, clear headline with metric baseline, observed value, and delta in percentage points (pp).\n"
+        "- State any denominator conflict clearly with numeric impact.\n"
+        "- Detail where drop/anomaly is concentrated across the 5 cuts.\n"
+        "- Explain correlation (concentration ratio) and timing coincidence with known issue (K1-K7).\n"
+        "- Explain 'The Why' (root cause mechanism, eliminating jargon).\n"
+        "- Trend state (new, persisting, or reversed) with finding_key.\n"
+        "- Context applied (matched K-issue, context version, caveats honoured).\n"
+        "- Confidence score and rationale.\n"
+        "- Concrete, high-leverage recommended next steps.\n\n"
         f"Question: '{question}'\n"
-        f"Domain Spec: {spec_id} (Table: {table_name})\n"
-        f"Matched Known Issue in Context Layer: {known_issue or 'None detected'}\n"
-        f"Multi-Cut ClickHouse Aggregations:\n{cuts}\n"
-        f"Confidence Evaluation: {confidence.get('rationale', '')} (Score: {confidence.get('score', 0.0)})\n\n"
-        f"Provide a concise, 2-sentence executive finding diagnosing the root cause and business impact."
+        f"Interpretation: {interpretation}\n"
+        f"Headline Metrics: {headline}\n"
+        f"Cuts Summary: {cuts_summary}\n"
+        f"Correlation / Concentration: {correlation}\n"
+        f"Timing & Matched Issue: {timing_k_match}\n"
+        f"Context Applied: {context_applied}\n"
+        f"Trend Info: {trend_info}\n"
+        f"Confidence Evaluation: {confidence}\n\n"
+        "Provide a polished markdown report tailored for product management."
+    )
+
+
+def build_decline_response_md(
+    question: str,
+    requested_metric: str = "",
+    reason_why: str = "",
+    missing_items: list[str] | None = None,
+    alternative_suggestions: list[str] | None = None,
+    trace_url: str = "",
+) -> str:
+    """Format an honest decline response when question is unanswerable per docs/CUJ2.md Section 10."""
+    missing_list = missing_items or ["telemetry columns for requested metric not present in instrumented tables"]
+    missing_text = "\n".join(f"- {m}" for m in missing_list)
+
+    alts = alternative_suggestions or [
+        "conversion through to purchase_completed, cut by device, geo, destination",
+        "drop-off at any funnel stage present in the event stream",
+        "payment latency at the confirmation step",
+    ]
+    alts_text = "\n".join(f"- {a}" for a in alts)
+
+    trace_line = f"\n🔍 Trace: {trace_url}" if trace_url else ""
+
+    return (
+        f"### I can't answer that from the instrumented tables\n\n"
+        f"**What you asked for:** {requested_metric or question}\n\n"
+        f"**Why it isn't derivable:** {reason_why or 'The instrumented event tables carry pre-purchase funnel telemetry only. No fulfillment, post-purchase, or delivery telemetry columns exist in registered tables.'}\n\n"
+        f"{missing_text}\n\n"
+        f"**What I could answer instead:**\n"
+        f"{alts_text}\n\n"
+        f"No query was run and no number was estimated.{trace_line}"
     )
 
 

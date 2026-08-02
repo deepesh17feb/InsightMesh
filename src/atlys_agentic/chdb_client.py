@@ -40,6 +40,7 @@ _SCHEMA_DDL = [
     """,
     """
     CREATE TABLE IF NOT EXISTS insights (
+        finding_key String,
         spec_id String,
         question String,
         answer_md String,
@@ -47,7 +48,7 @@ _SCHEMA_DDL = [
         cuts_json String,
         trace_id String,
         created_at DateTime
-    ) ENGINE = MergeTree ORDER BY (spec_id, created_at)
+    ) ENGINE = MergeTree ORDER BY (finding_key, spec_id, created_at)
     """,
     """
     CREATE TABLE IF NOT EXISTS table_semantics (
@@ -63,11 +64,39 @@ _SCHEMA_DDL = [
 ]
 
 
+def _sqlite_cosine_distance(a_val, b_val):
+    if not a_val or not b_val:
+        return 1.0
+    import math
+    if isinstance(a_val, str):
+        try:
+            a_val = json.loads(a_val)
+        except Exception:
+            return 1.0
+    if isinstance(b_val, str):
+        try:
+            b_val = json.loads(b_val)
+        except Exception:
+            return 1.0
+    if not isinstance(a_val, (list, tuple)) or not isinstance(b_val, (list, tuple)):
+        return 1.0
+    if len(a_val) != len(b_val) or len(a_val) == 0:
+        return 1.0
+    dot = sum(float(x) * float(y) for x, y in zip(a_val, b_val))
+    norm_a = math.sqrt(sum(float(x) * float(x) for x in a_val))
+    norm_b = math.sqrt(sum(float(y) * float(y) for y in b_val))
+    if norm_a == 0 or norm_b == 0:
+        return 1.0
+    return max(0.0, min(2.0, 1.0 - (dot / (norm_a * norm_b))))
+
+
 def _get_sqlite_conn():
     paths.CHDB_PATH.mkdir(parents=True, exist_ok=True)
     db_file = paths.CHDB_PATH / "metadata.sqlite"
     conn = sqlite3.connect(str(db_file), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.create_function("cosineDistance", 2, _sqlite_cosine_distance)
+    conn.create_function("cosinedistance", 2, _sqlite_cosine_distance)
     with conn:
         cursor = conn.cursor()
         for ddl in _SCHEMA_DDL:
@@ -84,6 +113,14 @@ def _get_sqlite_conn():
             clean = re.sub(r"\btable\s+TEXT\b", '"table" TEXT', clean, flags=re.IGNORECASE)
             try:
                 cursor.execute(clean)
+            except Exception:
+                pass
+        # Ensure finding_key column is present if insights table already existed
+        try:
+            cursor.execute("SELECT finding_key FROM insights LIMIT 1")
+        except Exception:
+            try:
+                cursor.execute("ALTER TABLE insights ADD COLUMN finding_key TEXT DEFAULT ''")
             except Exception:
                 pass
     return conn
@@ -113,8 +150,8 @@ def _run_sqlite_fallback(sql: str, fmt: str = "JSON"):
     clean = re.sub(r"\bWHERE\s+table\b", 'WHERE "table"', clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bSELECT\s+table\b", 'SELECT "table"', clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bORDER\s+BY\s+table\b", 'ORDER BY "table"', clean, flags=re.IGNORECASE)
-    # Convert unquoted Array literal [ ... ] to '[ ... ]' for SQLite
-    clean = re.sub(r"(?<!['\w])\[(.*?)\](?!['\w])", r"'[\1]'", clean)
+    # Convert unquoted float array literal e.g. [0.123, -0.456] into string '[0.123, -0.456]'
+    clean = re.sub(r"(?<!['\"\w])\[\s*(-?\d+\.?\d*(?:\s*,\s*-?\d+\.?\d*)*)\s*\](?!['\"\w])", r"'[\1]'", clean)
 
     with conn:
         cursor = conn.cursor()

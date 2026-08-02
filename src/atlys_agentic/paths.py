@@ -48,3 +48,16 @@ def available_spec_ids() -> list[str]:
             specs.append("06_unseen")
     return specs or ["01_express_checkout", "02_group_family", "03_coupons", "04_visas_for_digital_nomads", "05_price_drop"]
 
+
+def normalize_spec_id(spec_id: str) -> str:
+    if not spec_id:
+        return "01_express_checkout"
+    for sid in available_spec_ids():
+        if spec_id == sid:
+            return sid
+        clean_spec = spec_id.replace("spec_", "").replace("0", "").strip("_")
+        clean_sid = sid.replace("0", "").strip("_")
+        if spec_id in sid or clean_spec in clean_sid:
+            return sid
+    return spec_id
+
