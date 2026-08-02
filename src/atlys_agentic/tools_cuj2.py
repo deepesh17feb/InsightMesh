@@ -253,9 +253,19 @@ def Tool_Semantic_Retrieval(
     q_lower = (question or "").lower()
 
     def _rank_candidate(c: dict) -> tuple:
-        t_clean = (c.get("table_name") or "").lower().replace("_", " ")
-        has_name = 1 if (t_clean and t_clean in q_lower) else 0
+        t_raw = (c.get("table_name") or "").lower()
+        t_clean = t_raw.replace("_", " ")
+        t_tokens = [tok for tok in t_raw.split("_") if len(tok) > 3]
+        if t_clean and t_clean in q_lower:
+            has_name = 3
+        elif len(t_tokens) >= 2 and all(tok in q_lower for tok in t_tokens):
+            has_name = 2
+        elif any(tok in q_lower for tok in t_tokens):
+            has_name = 1
+        else:
+            has_name = 0
         return (-has_name, c.get("dist", 1.0))
+
 
     if q_vec and raw_semantics:
         # Direct ClickHouse cosineDistance SQL execution per docs/CUJ2.md §4 Phase 1a
