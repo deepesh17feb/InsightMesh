@@ -289,6 +289,13 @@ def new_trace(spec_id: str, run_mode: str | None = None) -> str:
 
     try:
         c = client()
+        if hasattr(c, "trace") and callable(getattr(c, "trace")):
+            t_res = c.trace(name=f"clickathon-{mode}-{spec_id}", tags=[spec_id, mode])
+            if t_res:
+                _current_trace_id = getattr(t_res, "id", str(t_res))
+                _current_trace_url = c.get_trace_url(trace_id=_current_trace_id) if hasattr(c, "get_trace_url") else None
+                return _current_trace_id
+
         active_id = c.get_current_trace_id() if hasattr(c, "get_current_trace_id") else None
         if active_id:
             _current_trace_id = active_id
