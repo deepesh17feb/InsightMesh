@@ -1,41 +1,55 @@
-# InsightMesh Technical Architecture
-### Click-a-thon 2026 — Deep Dive Technical Specification
+# InsightMesh System Architecture
+### Click-a-thon 2026 — Official ATLYS Track Architecture Document
 
-This document provides a comprehensive technical breakdown of **InsightMesh**, an agentic data engineering and product analytics platform built for Atlys. It details the multi-agent orchestration model, deterministic execution pipelines, data custodianship boundaries, semantic context management in `chDB`, and end-to-end two-tier telemetry.
+> **Track:** Atlys — *"From feature spec to insight: agents that instrument, analyze, and explain."*  
+> **Backend Datastore:** ClickHouse Cloud (`CLICKHOUSE_DATABASE=default` · 2,479,858 historical events across 8 tables)  
+> **Context Storage:** Embedded `chDB` (In-process ClickHouse SQL & vector engine)  
+> **Agent Orchestration:** CrewAI Flows (`memory=False` · Deterministic Sequential Pipelines)  
+> **Observability:** Langfuse (Semantic Traces) + ClickStack / OpenTelemetry (System Traces)  
+> **User Interface:** LibreChat (Port 3080 · Docker Compose) & FastAPI Gateway (Port 8008)  
 
 ---
 
-## 1. Architectural Principles & System Context
+## 1. Executive Architecture Overview
 
-InsightMesh replaces the manual, fragmented lifecycle between product managers, data engineers, and data analysts with two deterministic Critical User Journeys (CUJs):
-- **CUJ 1 — Schema Ingestion & Evolution**: Converts product specs (`spec.md`) and raw event streams (`events.ndjson`) into production ClickHouse DDL, materialized views, and updated semantic context behind a 2-turn Human-in-the-Loop (HITL) gate.
-- **CUJ 2 — Telemetry Analytics & PM Diagnosis**: Translates natural-language business questions into multi-cut ClickHouse aggregations, validates against known system anomalies (K1–K7), derives causal concentrations, and produces actionable PM insights with calibrated confidence scores.
+**InsightMesh** is an autonomous, multi-agent data engineering and product analytics platform designed for Atlys. It replaces the slow, manual lifecycle between product specification (`spec.md`), event stream logs (`events.ndjson`), schema creation, and product diagnostic insights.
 
-### 1.1 High-Level C4 Container Diagram
+```
+                    ┌───────────────────────────────────────────────────────────┐
+                    │                   InsightMesh C4 Model                    │
+                    ├─────────────────────────────┬─────────────────────────────┤
+                    │  1. Instrumentation Agent   │  ClickHouse 6-Pillar DDL    │
+                    │  2. Context Agent           │  chDB Custodian & Vectors   │
+                    │  3. Query Architect         │  Precision SQL Translation  │
+                    │  4. Product Analyst Agent   │  Multi-Cut PM Diagnostics   │
+                    └─────────────────────────────┴─────────────────────────────┘
+```
+
+### 1.1 C4 Component Interaction Diagram
 
 ```mermaid
 flowchart TB
     subgraph ClientSurfaces ["Client Surfaces"]
         LC["LibreChat Conversational UI<br/>(Port 3080 · Docker Compose)"]
-        CLI["CLI Tool / Ingestion Runner<br/>(run_ingestion.py)"]
-        HTTP["FastAPI Gateway & Chat Backend<br/>(Port 8008 · /v1/chat/completions)"]
+        CLI["CLI Ingestion Runner<br/>(python -m atlys_agentic.run_ingestion)"]
+        HTTP["FastAPI Chat & Ingestion API<br/>(Port 8008 · /v1/chat/completions)"]
     end
 
     subgraph AgentOrchestration ["Agent Orchestration Layer (CrewAI Flows)"]
         CL["Context Agent (Librarian)<br/>• Sole DB & Metadata Custodian<br/>• Catalog sync & context audit"]
         IE["Instrumentation Engineer<br/>• Pure DDL & MV System Architect<br/>• 6-Pillar ClickHouse Design"]
-        QA["Query Architect<br/>• Precision SQL Compiler<br/>• Syntax & Plan Translation"]
+        QA["Query Architect<br/>• Precision SQL Compiler<br/>• DDL & SELECT Translation"]
         PA["Product Analyst Agent<br/>• Read-Only Multi-Cut Compute<br/>• Signal & Confidence Derivation"]
     end
 
     subgraph StorageLayer ["Dual Datastore Architecture"]
-        CHDB[("chDB (Embedded In-Process ClickHouse)<br/>──────────────────────────────<br/>• schema_registry (versioned DDL)<br/>• business_context (metrics & rules)<br/>• context_changelog (audit lineage)<br/>• table_semantics (vector embeddings)<br/>• insights (persisted diagnoses)")]
-        CHCLOUD[("ClickHouse Cloud ('default' database)<br/>──────────────────────────────<br/>• 8 Foundation Tables (2.5M events)<br/>• Ingested Feature Tables (01 to 06)<br/>• Daily SummingMergeTree MVs")]
+        CHDB[("chDB (Embedded ClickHouse SQL)<br/>──────────────────────────────<br/>• schema_registry (versioned DDL)<br/>• business_context (metrics & rules)<br/>• context_changelog (audit lineage)<br/>• table_semantics (768-dim vectors)<br/>• insights (persisted diagnoses)")]
+        CHCLOUD[("ClickHouse Cloud ('default' DB)<br/>──────────────────────────────<br/>• 8 Foundation Tables (2.5M events)<br/>• Ingested Feature Tables (01 to 06)<br/>• Daily SummingMergeTree MVs")]
     end
 
     subgraph ObservabilityLayer ["Two-Tier Observability Architecture"]
-        LF[("Langfuse Cloud<br/>(Semantic Traces, Prompts, 'metadata.why')")]
-        CS[("ClickStack / HyperDX (OTel)<br/>(Query Latency, DDL Duration, System Metrics)")]
+        LF[("Langfuse Semantic Tracing<br/>(Agent Spans, Prompts, 'metadata.why')")]
+        CS[("ClickStack / HyperDX (OTel)<br/>(Query Latency, DDL Duration, OTLP Spans)")]
     end
 
     LC --> HTTP
@@ -54,59 +68,187 @@ flowchart TB
 
 ---
 
-## 2. Agent Roster & Least-Privilege Custodianship Model
+## 2. Agent Roster, Naming Consistency & Custodianship Model
 
-To eliminate context hallucination and prevent unvalidated schema modifications or ad-hoc query injections, InsightMesh implements a strict **Data Custodianship & Least-Privilege Separation of Concerns**:
+InsightMesh enforces a strict **Least-Privilege & Data Custodianship Boundary**:
 
-| Agent Persona | Direct DB / Metadata Access? | Assigned Tools | Core Architectural Responsibilities |
-| :--- | :---: | :--- | :--- |
-| **`Context Agent`**<br>*(Context Librarian)* | ✅ **Sole Custodian**<br>(Read/Write `chDB` + ClickHouse DDL) | • `refresh_chdb_from_live`<br>• `build_context_package`<br>• `decide_strategy`<br>• `context_diff`<br>• `execute_ddl`<br>• `load_events`<br>• `register_schema_version`<br>• `sync_context`<br>• `write_table_semantics` | **Data Governance Gatekeeper & DB Custodian**: The only agent authorized to communicate with `chDB` and ClickHouse Cloud DDL. Briefs the Instrumentation Engineer with live catalog shapes, audits proposed DDL against business rules, manages HITL operator proposals, deploys approved tables/MVs, loads raw event batches, and writes versioned embeddings into `table_semantics`. |
-| **`Instrumentation Engineer`**<br>*(Schema Architect)* | ❌ **Zero Direct Access** | • `design_schema` (LLM-driven)<br>• `infer_schema`<br>• `generate_mv`<br>• `explain_schema_rationale` | **Pure ClickHouse Systems Architect**: Operates as a pure design engine with zero database permissions. Analyzes raw event samples and feature specifications to design optimal 6-pillar ClickHouse schemas, determines event field mappings, justifies materialized views, and returns design intent to the Context Agent. |
-| **`Query Architect`**<br>*(SQL Compiler)* | ❌ **Zero Direct Access** | • `design_to_ddl`<br>• `plan_queries` | **Precision SQL & DDL Translation Engine**: Shared between CUJ 1 and CUJ 2. Translates design intent into production ClickHouse DDL (`CREATE TABLE`, `CREATE MATERIALIZED VIEW`, `INSERT`) and converts analytical intent into typed `PlannedQuery` objects (5 cuts, intersection, time series, alt-denominator headline). Never makes autonomous design decisions and never executes queries. |
-| **`Product Analyst Agent`**<br>*(Analytics Scientist)* | 🔍 **Read-Only Analytics**<br>(Strict `SELECT` Only) | • `analytics_compute`<br>• `score_confidence`<br>• `synthesize_insight` | **Analytics & Diagnostics Scientist**: Receives domain context and known issues (K1–K7) from the Context Agent. Pushes multi-cut aggregation queries into ClickHouse Cloud, performs result audits, calculates concentration ratios and date coincidences, computes calibrated confidence scores, and synthesizes executive PM reports. |
+```
+                    ┌───────────────────────────────────────────────────────────┐
+                    │                   Data Custodianship                      │
+                    ├─────────────────────────────┬─────────────────────────────┤
+                    │  Context Agent              │  ✅ Sole DB & Metadata Custodian │
+                    │  Instrumentation Engineer   │  ❌ Zero Database Access    │
+                    │  Query Architect            │  ❌ Zero Database Access    │
+                    │  Product Analyst Agent      │  🔍 Read-Only SELECT Only   │
+                    └─────────────────────────────┴─────────────────────────────┘
+```
+
+| Agent Persona | Codebase Binding (`agents.py`) | Langfuse Span Prefix | DB / Metadata Access | Core Responsibilities |
+| :--- | :--- | :--- | :---: | :--- |
+| **`Context Agent`**<br>*(Context Librarian)* | `build_context_agent()`<br>`build_context_librarian()` | `context_agent::...` | ✅ **Sole Custodian**<br>(Read/Write `chDB` + ClickHouse DDL & Loads) | Exclusive owner of `chDB` and ClickHouse Cloud DDL/load operations. Refreshes live catalogs, builds context briefings, runs semantic audits, deploys approved schemas, loads events, and updates versioned table semantics. |
+| **`Instrumentation Engineer`**<br>*(Schema Architect)* | `build_instrumentation_agent()`<br>`build_instrumentation_engineer()` | `instrumentation_agent::...` | ❌ **Zero Direct Access** | Pure ClickHouse systems architect. Reasons over specs (`spec.md`) and event streams (`events.ndjson`) to design 6-pillar ClickHouse schemas, field mappings, and materialized view justifications without touching any database. |
+| **`Query Architect`**<br>*(SQL Compiler)* | `build_query_architect()` | `query_architect::...` | ❌ **Zero Direct Access** | Precision SQL translation compiler shared across CUJ 1 (`design_to_ddl`) and CUJ 2 (`plan_queries`). Outputs typed `PlannedQuery` objects with origin metadata (`architect_llm` vs `architect_fallback`). |
+| **`Product Analyst Agent`**<br>*(Analytics Scientist)* | `build_analytics_agent()`<br>`build_product_analyst()` | `analytics_agent::...` | 🔍 **Read-Only Analytics**<br>(Strict `SELECT` Only) | Analytics scientist that pushes multi-cut aggregations into ClickHouse Cloud, performs result audits, calculates concentration ratios and date coincidences, computes calibrated confidence scores, and synthesizes executive PM reports. |
 
 ---
 
-## 3. CUJ 1: Schema Ingestion & Evolution Pipeline
+## 3. Where the Context Layer is Stored and Why (`chDB`)
 
-### 3.1 12-Phase Ingestion Workflow
+The business context layer is stored in **embedded `chDB`** (`CHDB_PATH=./chdb_data`, backed by an in-process ClickHouse SQL session with SQLite fallback in `chdb_client.py`).
+
+### 3.1 Why chDB Was Chosen Over Alternatives
+1. **ClickHouse SQL Dialect Parity:** Because `chDB` executes the exact ClickHouse SQL dialect locally, there is zero translation mismatch between metadata logic and ClickHouse Cloud schemas.
+2. **Zero Network Latency & High Isolation:** Runs in-process with zero network hops, guaranteeing sub-millisecond metadata lookups for JIT retrieval.
+3. **Transparent & Inspectable:** Unlike opaque vector stores or proprietary memory frameworks, all business rules, schema versions, and audit logs are inspectable via standard SQL (`SELECT * FROM business_context`).
+4. **Native Vector Cosine Distance:** Uses ClickHouse's native `cosineDistance(embedding, {question_vector})` function for semantic similarity search, eliminating the need for a separate vector database.
+5. **No Hidden LLM Memory (`memory=False`):** Eliminates context drift and hallucinations by fetching active context at runtime via deterministic SQL queries.
+
+### 3.2 The Five Metadata Tables in `chDB`
+
+```sql
+-- 1. Schema Version Registry
+CREATE TABLE schema_registry (
+    "table" String,
+    ddl String,
+    columns_json String,
+    spec_id String,
+    version UInt16,
+    created_at DateTime
+) ENGINE = MergeTree ORDER BY ("table", version);
+
+-- 2. Living Business Context & Domain Rules
+CREATE TABLE business_context (
+    id UInt32,
+    section String,
+    key String,
+    definition String,
+    version UInt16,
+    valid_from DateTime,
+    source String,
+    status String
+) ENGINE = MergeTree ORDER BY (section, key, version);
+
+-- 3. Immutable Governance Changelog (Lineage Audit)
+CREATE TABLE context_changelog (
+    ts DateTime,
+    change_type String,
+    before String,
+    after String,
+    agent String,
+    trace_id String
+) ENGINE = MergeTree ORDER BY ts;
+
+-- 4. Vector Semantic Layer (CUJ 1 -> CUJ 2 Handoff)
+CREATE TABLE table_semantics (
+    table_name String,
+    spec_id String,
+    description String,
+    concepts String,
+    embedding Array(Float32),
+    version UInt16,
+    created_at DateTime
+) ENGINE = MergeTree ORDER BY (table_name, version);
+
+-- 5. Durable Diagnostic Memory
+CREATE TABLE insights (
+    finding_key String,
+    spec_id String,
+    question String,
+    answer_md String,
+    confidence Float32,
+    cuts_json String,
+    trace_id String,
+    created_at DateTime
+) ENGINE = MergeTree ORDER BY (finding_key, spec_id, created_at);
+```
+
+---
+
+## 4. Generic LLM Error Handling Architecture
+
+In [`src/atlys_agentic/flows/ingestion_flow.py`](file:///usr/local/google/home/deepeshmw/github/InsightMesh/src/atlys_agentic/flows/ingestion_flow.py#L245-L285) and [`src/atlys_agentic/conversational_ingestion.py`](file:///usr/local/google/home/deepeshmw/github/InsightMesh/src/atlys_agentic/conversational_ingestion.py#L295-L330), an explicit generic LLM error handling mechanism is positioned immediately before the Instrumentation Engineer step:
+
+```mermaid
+flowchart TD
+    SPEC["Input Feature Spec & Event Sample"] --> PROMPT["Build Context & Instrumentation Prompt"]
+    PROMPT --> LLM_CALL{"Call LLM via LiteLLM<br/>(Gemini / OpenAI)"}
+    
+    LLM_CALL -->|Success| EXTRACT["Extract Dynamic LLM Schema Rationale"]
+    LLM_CALL -->|Exception / Timeout / Rate Limit| CATCH["Catch Generic Exception<br/>(try...except Exception)"]
+    
+    CATCH --> FALLBACK["Activate Deterministic 6-Pillar Fallback<br/>(Tool_Explain_Schema_Rationale + Tool_Infer_Schema)"]
+    EXTRACT --> EMIT["Emit Langfuse Generation & Telemetry Span"]
+    FALLBACK --> EMIT
+    
+    EMIT --> ARCH["Handoff to Query Architect (design_to_ddl)"]
+```
+
+### Verified Implementation Attributes:
+- **Exception Shielding:** Wraps external LLM provider calls in a `try...except Exception:` block, shielding the pipeline from network timeouts, quota limits, or malformed provider responses.
+- **Deterministic 6-Pillar Fallback:** If the LLM call fails, the pipeline immediately substitutes the verified 6-pillar storage rationale generated by `Tool_Explain_Schema_Rationale` and `Tool_Infer_Schema`.
+- **Continuous Telemetry Record:** The Langfuse generation span (`instrumentation_agent::design_schema`) is recorded with the active model name, prompt, and fallback output, ensuring a complete reasoning trace without pipeline interruptions.
+
+---
+
+## 5. Startup Data Sync & Semantic Layer Architecture
+
+### 5.1 Startup Sequence & Live Table Synchronization
+Upon backend startup ([`src/atlys_agentic/run_chat.py`](file:///usr/local/google/home/deepeshmw/github/InsightMesh/src/atlys_agentic/run_chat.py#L48-L55)):
+1. **Schema Initialization:** `chdb_client.init_schema()` initializes the 5 metadata tables in `chDB`.
+2. **Base Context Chunking:** `chdb_client.init_base_context()` parses `problem statment/base_context.md` into granular paragraphs, populating `chDB.business_context`.
+3. **Live Catalog Synchronization:** `Tool_Refresh_CHDB_From_Live()` queries ClickHouse Cloud (`CLICKHOUSE_DATABASE=default`) `system.tables` (`name`, `engine`, `partition_key`, `sorting_key`) to sync live tables and detect schema drift against `schema_registry`.
+4. **Foundation Semantic Seeding:** `Tool_Bootstrap_Base_Semantics(force=True)` seeds semantic metadata for all 8 foundation tables plus all cataloged feature spec directories.
+
+### 5.2 Semantic Table Descriptions (All 8 Tables + New Specs)
+
+In [`src/atlys_agentic/tools_cuj2.py`](file:///usr/local/google/home/deepeshmw/github/InsightMesh/src/atlys_agentic/tools_cuj2.py#L77-L126), `BASE_TABLE_SEMANTICS` defines rich semantic descriptions and search concepts for all 8 core tables:
+
+1. **`destination_card_clicked`**: Top-of-funnel browse and card click events (`is_guest_browse`, `destination`, `co_travelers`, `card_type`, `flow`).
+2. **`application_started`**: Stage 1 core visa application initiation (`application_id`, `destination`, `co_travelers`, `visa_issuance_eta_days`).
+3. **`document_uploaded`**: Stage 2 KYC passport image uploads (`doc_type`, `capture_mode`, `retry_count`, `is_crossed_failed_attempt_threshold`).
+4. **`pay_now_clicked`**: Checkout initiation click (`payment_method`, `currency`, `discount_amount`, `amount`).
+5. **`purchase_completed`**: Stage 4 payment conversion (`value`, `currency`, `coupon_applied`, `insurance_amount`, AOV).
+6. **`search_typed`**: Destination search queries (`search_term`, `is_zero_results`, character length).
+7. **`landing_page_scrolled`**: Discovery feed scrolling behavior (`scroll_depth_pct`, `time_on_page_s`, `page_version`).
+8. **`auth_completed`**: Authentication and signup completion (`auth_method`: phone OTP, Google OAuth, email; `is_new_user`).
+
+**Safe Embedding Helper Fallback:**
+In [`src/atlys_agentic/tools_common.py`](file:///usr/local/google/home/deepeshmw/github/InsightMesh/src/atlys_agentic/tools_common.py#L131-L164), `embed_text()` wraps embedding generation in a safe try-except block. If the embedding provider fails or is offline, it returns an empty list `[]` (0 dimensions) rather than throwing an exception. Downstream, `table_semantics` records the row, and CUJ 2 treats it as an **unranked candidate**, ensuring newly created tables remain accessible.
+
+---
+
+## 6. Deterministic CUJ 1 & CUJ 2 Workflows
+
+### 6.1 CUJ 1: Schema Ingestion & Evolution (12-Phase Pipeline)
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Operator as Human Operator (LibreChat / CLI)
     participant CL as Context Agent (Sole DB Custodian)
-    participant chDB as chDB (Local Metadata & Vectors)
+    participant chDB as chDB (schema_registry & business_context)
     participant IE as Instrumentation Engineer (Pure Architect)
     participant QA as Query Architect (SQL Compiler)
     participant VAL as Invariant Validator
     participant CH as ClickHouse Cloud ('default')
 
-    Note over Operator,CL: Phase 1: Ingestion Trigger
     Operator->>CL: 1. Ingest Feature Spec ("ingest 01_express_checkout")
-    
-    Note over CL,chDB: Phase 2 & 3: Catalog Refresh & Context Briefing
     CL->>CH: 2. Refresh live catalog (system.tables & system.columns)
     CL->>chDB: 3. Fetch schema_registry, business_context & metric definitions
     CL->>IE: 4. Handoff Context Briefing (existing tables, caveats, spec text, sample events)
 
-    Note over IE,QA: Phase 5 & 6: Schema Design & SQL Compilation
     IE->>IE: 5. Formulate 6-Pillar Storage Design, Field Mapping & MV Justification
     IE->>QA: 6. Hand off Design Intent
     QA->>QA: 7. Render ClickHouse DDL, SummingMergeTree MV, and INSERT statement
 
-    Note over QA,VAL: Phase 7: Invariant Safety Validation
     QA->>VAL: 8. Validate 4 Invariants (no id-first, partitioning, TTL, LowCardinality)
     VAL-->>CL: 9. Validation passed (0 violations; bounded 1-retry if failed)
 
-    Note over CL,chDB: Phase 8 & 9: Semantic Audit & HITL Proposal
     CL->>chDB: 10. Run context_diff (detect denominator conflicts, caveats, gaps)
     CL-->>Operator: 11. Print Proposal Markdown + Hidden Token (<!-- atlys:proposal ... -->)
 
-    Note over Operator,CL: Phase 10: Human-in-the-Loop Approval
     Operator->>CL: 12. "APPROVE" (explicit authorization)
 
-    Note over CL,CH: Phase 11 & 12: Deployment, Load, Context Sync & Artifacts
     CL->>CH: 13a. Execute CREATE TABLE & CREATE MATERIALIZED VIEW
     CL->>CH: 13b. Load events.ndjson (FORMAT JSONEachRow)
     CL->>chDB: 13c. Register schema v+1, upsert business_context & context_changelog
@@ -114,46 +256,11 @@ sequenceDiagram
     CL-->>Operator: 14. Emit Receipt, Artifacts (schema.sql, run_report.md) & Langfuse Trace URL
 ```
 
-### 3.2 ClickHouse 6-Pillar Storage Mechanics
-
-The Instrumentation Engineer enforces six mandatory ClickHouse architectural rules:
-
-1. **Ordering Key (`ORDER BY`)**:
-   - Predicate-first ordering: Always leads with `(timestamp, user_id)` or `(timestamp, user_id, segment)`.
-   - **Anti-Pattern Prohibited**: Never leads with event `id` or UUID. Leading with random UUIDs destroys ClickHouse sparse index granule pruning and severely degrades zstd compression.
-2. **Partitioning (`PARTITION BY`)**:
-   - Monthly partitioning via `toYYYYMM(timestamp)`.
-   - Keeps total active parts bounded to 12 over a 1-year window, preventing the "too many parts" error caused by daily partitioning.
-3. **Encoding & Types**:
-   - `LowCardinality(String)` for bounded enums (`device_type`, `os`, `currency`, `geoip_country_code`).
-   - `UInt8` for boolean flags (`otp_success`, `is_guest`).
-   - `Nullable(...)` strictly for sparse event attributes.
-4. **Data Retention (`TTL`)**:
-   - Mandatory `TTL timestamp + INTERVAL 12 MONTH` to automate data lifecycle management and ensure compliance.
-5. **Materialized Views (MV Justification)**:
-   - Evaluates whether recurring multi-cut queries benefit from pre-aggregation.
-   - Generates companion `SummingMergeTree` rollups partitioned by month and ordered by slice dimensions (`day, device_type, geoip_country_code`).
-6. **Nested Object Flattening**:
-   - Flattens nested JSON payloads into column primitives (e.g. `payment.amount` $\rightarrow$ `payment_amount`, `payment.latency_ms` $\rightarrow$ `payment_latency_ms`) to maximize columnar scan throughput.
-
-### 3.3 Invariant Safety Validator
-
-The validator guarantees non-negotiable storage invariants:
-- **Rule 1**: Disallow `ORDER BY (id, ...)` or `ORDER BY (uuid, ...)`.
-- **Rule 2**: Enforce presence of `PARTITION BY toYYYYMM(...)`.
-- **Rule 3**: Enforce presence of `TTL ... + INTERVAL 12 MONTH`.
-- **Rule 4**: Verify appropriate `LowCardinality` usage on categorical columns.
-- **Bounded Self-Healing**: If any invariant fails, the validator sends structured feedback to the Instrumentation Engineer for a single redesign attempt. If a second attempt fails, a conservative template is applied and flagged in `run_report.md`.
-
----
-
-## 4. CUJ 2: Telemetry Analytics & PM Diagnosis Pipeline
-
-### 4.1 11-Phase Analytics Workflow
+### 6.2 CUJ 2: Telemetry Analytics & PM Diagnosis (11-Phase Pipeline)
 
 ```mermaid
 flowchart TD
-    Q(["PM Natural-Language Question<br/>(via LibreChat UI / API)"]) --> GUARD["Guardrail Validation<br/>(Safety, Greeting, Scope Check)"]
+    Q(["PM Natural-Language Question<br/>(via LibreChat UI / API)"]) --> GUARD["Phase 0: Guardrail Validation<br/>(Greeting / Abusive / Scope Check)"]
     GUARD --> C1
 
     subgraph Phase1 ["Phase 1: 3-Guard Semantic Retrieval & Live Probe"]
@@ -194,125 +301,11 @@ flowchart TD
     DERIVE --> SYN
 ```
 
-### 4.2 3-Guard Semantic Vector Retrieval
-
-To prevent hardcoded table-matching cascades that fail on unseen features, CUJ 2 executes native ClickHouse vector similarity against `chDB.table_semantics`:
-
-```sql
-SELECT 
-    table_name, 
-    spec_id, 
-    description,
-    cosineDistance(embedding, {question_embedding}) AS dist
-FROM table_semantics
-WHERE length(embedding) > 0
-ORDER BY dist ASC
-LIMIT 3;
-```
-
-**The Three Guards:**
-1. **Distance Threshold ($\tau$)**: If the best candidate distance exceeds $\tau$, the system refrains from forcing a match and asks for clarification.
-2. **Degraded Embedding Fallback**: If the embedding provider is unavailable, fallback passes the full schema catalog to the LLM.
-3. **Unranked Candidate Inclusion**: If a table was just created without an embedding, it is retained as an unranked candidate rather than being made invisible.
-
-### 4.3 Deterministic Signal Derivation & Confidence Scoring
-
-Instead of relying on LLM intuition, all analytical signals are calculated deterministically:
-
-1. **Concentration Ratio**:
-   $$\text{Concentration} = \frac{\Delta_{\text{top\_segment}}}{\sum \Delta_{\text{all\_segments}}}$$
-   - If $\ge 70\%$ of the conversion deficit is concentrated in a single segment (e.g. `device_type = 'ios'` in `country = 'AE'`), the anomaly is classified as an isolated segment regression rather than a systemic platform failure.
-2. **Date Coincidence**:
-   - Evaluates the inflection date in daily time-series data against the documented event timestamps in known issues (e.g. K1 release date `2026-03-11` vs drop date `2026-03-12`).
-3. **Trend State (`finding_key`)**:
-   - `finding_key = f"{table}::{metric}::{top_dimension}::{top_segment}"`
-   - Enables exact string lookups against historical `chDB.insights` to classify findings as `NEW`, `PERSISTING`, or `REVERSED`.
-4. **Calibrated Confidence Formula**:
-   $$\text{Confidence} = f(N_{\text{sample}}, \Delta_{\text{effect}}, \text{Match}_{\text{K-Issue}}, \text{Consistency}_{\text{Cuts}}) \in [0.0, 1.0]$$
-
 ---
 
-## 5. Semantic Layer & Vector Metadata Architecture (`chDB`)
+## 7. Stateless Conversation State Machine (LibreChat Integration)
 
-InsightMesh embeds **chDB** (an in-process SQL engine powered by ClickHouse) to maintain five version-controlled metadata stores:
-
-```
-                  ┌────────────────────────────────────────────────────────────┐
-                  │                 chDB Embedded Catalog                      │
-                  ├─────────────────────────────┬──────────────────────────────┤
-                  │  1. schema_registry         │  DDL Versions & Columns      │
-                  │  2. business_context        │  Formulas, Caveats & K1-K7   │
-                  │  3. context_changelog       │  Immutable Audit Trail       │
-                  │  4. table_semantics         │  768-Dim Vector Embeddings   │
-                  │  5. insights                │  Durable Diagnostic Memory   │
-                  └─────────────────────────────┴──────────────────────────────┘
-```
-
-### 5.1 Metadata Schemas
-
-```sql
--- 1. Schema Version Registry
-CREATE TABLE schema_registry (
-    table_name String,
-    ddl String,
-    columns_json String,
-    spec_id String,
-    version UInt16,
-    created_at DateTime
-) ENGINE = MergeTree ORDER BY (table_name, version);
-
--- 2. Business Context & Caveats
-CREATE TABLE business_context (
-    id String,
-    section String,
-    key String,
-    definition String,
-    version UInt16,
-    valid_from DateTime,
-    source String,
-    status String
-) ENGINE = MergeTree ORDER BY (section, key, version);
-
--- 3. Immutable Governance Changelog
-CREATE TABLE context_changelog (
-    timestamp DateTime,
-    change_type String,
-    entity_key String,
-    before_value String,
-    after_value String,
-    agent String,
-    trace_id String
-) ENGINE = MergeTree ORDER BY (timestamp, entity_key);
-
--- 4. Vector Semantic Layer (CUJ 1 -> CUJ 2 Handoff)
-CREATE TABLE table_semantics (
-    table_name String,
-    spec_id String,
-    description String,
-    concepts String,
-    embedding Array(Float32),
-    version UInt16,
-    created_at DateTime
-) ENGINE = MergeTree ORDER BY (table_name, version);
-
--- 5. Durable Diagnostic Insights
-CREATE TABLE insights (
-    spec_id String,
-    question String,
-    answer_md String,
-    confidence Float32,
-    cuts_json String,
-    finding_key String,
-    trace_id String,
-    created_at DateTime
-) ENGINE = MergeTree ORDER BY (spec_id, created_at);
-```
-
----
-
-## 6. Stateless Conversation State Machine
-
-To support multi-turn Human-in-the-Loop workflows in LibreChat without complex server session management, InsightMesh reconstructs state dynamically from conversation history using hidden HTML tokens:
+To support multi-turn HITL workflows without server sessions, state is reconstructed statelessly from LibreChat conversation history via invisible HTML comment tokens:
 
 ```mermaid
 stateDiagram-v2
@@ -340,25 +333,21 @@ stateDiagram-v2
     Answered --> [*]
 ```
 
-### Turn Token Serialization
-- **CUJ 1 Proposal Token**:
-  ```html
-  <!-- atlys:proposal spec_id=01_express_checkout table=express_checkout trace=5b2b8bbc50f0fae0389ca50d0e1e9559 -->
-  ```
-- **CUJ 2 Insight Token**:
-  ```html
-  <!-- atlys:insight table=express_checkout metric=conversion_rate finding_key=express_checkout::conversion_rate::device_type::ios trace=ce7dce3da46846962595f3a26d4e3d5e -->
-  ```
+### Turn Token Format:
+- **Proposal Token:**
+  `<!-- atlys:proposal spec_id=01_express_checkout table=express_checkout trace=73a9709f1bf3253b218413155ae16c4f -->`
+- **Insight Token:**
+  `<!-- atlys:insight table=express_checkout metric=conversion_rate finding_key=express_checkout::conversion_rate::device_type::ios trace=ce7dce3da46846962595f3a26d4e3d5e -->`
 
 ---
 
-## 7. Observability & Telemetry Architecture
+## 8. Observability & Tracing Architecture
 
-InsightMesh implements a unified two-tier observability model satisfying the *"no trace, no credit"* mandate:
+InsightMesh satisfies the *"no trace, no credit"* mandate through two complementary observability tiers:
 
 ```mermaid
 flowchart LR
-    subgraph AgentExecution ["Agent & Workflow Execution"]
+    subgraph AgentExecution ["Agent Execution & Workflow Steps"]
         STEP["Agent Step / Tool Call"]
     end
 
@@ -374,13 +363,25 @@ flowchart LR
     STEP -->|Shared trace_id| CS_SPAN
 ```
 
-### Span Contract Specification
-Every Langfuse span recorded by InsightMesh adheres to a standardized schema:
-- **`input`**: Serialized input arguments and upstream context.
-- **`output`**: Result payload, DDL status, or computed metrics.
-- **`metadata.agent`**: Assigned persona (`context_agent`, `instrumentation_agent`, `query_architect`, `analytics_agent`).
-- **`metadata.why`**: A concise sentence justifying the architectural or analytical decision (e.g. *"led ordering key with (timestamp, user_id) because funnel queries filter by time range before user cohort"*).
-- **`metadata.trace_url`**: Direct deep link to the Langfuse inspection dashboard.
+### Standard Span Metadata Schema:
+Every Langfuse span recorded by InsightMesh adheres to a standardized contract:
+- `input`: Serialized arguments, questions, and upstream context.
+- `output`: Result payload, DDL status, or computed metrics.
+- `metadata.agent`: Assigned persona (`context_agent`, `instrumentation_agent`, `query_architect`, `analytics_agent`).
+- `metadata.why`: A concise sentence explaining the decision (e.g. *"led ordering key with (timestamp, user_id) because funnel queries filter by time range before user cohort"*).
+- `metadata.trace_url`: Deep link to the Langfuse inspection dashboard.
 
 ---
-*Authored for the Click-a-thon 2026 Submission by the InsightMesh Team.*
+
+## 9. LLM Provider(s) Used and Justification
+
+- **Primary Provider:** **Google Gemini** (`gemini/gemini-3-flash-preview` via LiteLLM).
+- **Embedding Provider:** **Google Gemini** (`text-embedding-004`, 768 dimensions).
+- **Why Chosen:**
+  1. **Sub-Second Latency:** Gemini 3 Flash delivers fast completion times (~200–400ms per agent generation), keeping full end-to-end multi-agent pipelines under 5 seconds.
+  2. **High Structured Reasoning Quality:** Excels at zero-shot SQL generation, complex ClickHouse syntax (`SummingMergeTree`, `windowFunnel`), and nuanced PM markdown report synthesis.
+  3. **Zero Temperature (`temperature=0.0`):** Enforces strict determinism across invariant validation, strategy decisions, and query planning.
+  4. **LiteLLM Native Integration:** Enables automatic callbacks to Langfuse for request/response logging, token accounting, and cost tracking.
+
+---
+*Created for the Click-a-thon 2026 Official Submission by the InsightMesh Team.*

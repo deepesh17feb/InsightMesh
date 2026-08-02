@@ -1,277 +1,189 @@
-# Surfer AI — Atlys Agentic Analytics System
-### Click-a-thon 2026 Official Submission (`click-a-thon-26-submissions`)
-**Project:** InsightMesh (`deepesh17feb/InsightMesh`)  
-**Track:** Atlys  
-**Team Member:** @manojgoyal224 @deepesh17feb  
-**Target Datastore:** ClickHouse Cloud (`CLICKHOUSE_DATABASE=default`)  
+# Surfer AI
+
+## Track
+**Atlys** — *"From feature spec to insight: agents that instrument, analyze, and explain."*
+
+## Project
+**InsightMesh** — Autonomous multi-agent telemetry instrumentation, living semantic context governance, and PM-actionable root-cause diagnostics on ClickHouse.
+
+## Team Members
+- **Deepesh** ([@deepesh17feb](https://github.com/deepesh17feb))
+- **Manoj Goyal** ([@manojgoyal224](https://github.com/manojgoyal224))
 
 ---
 
-## 🌟 Executive Overview
+## 🌐 Hosted Demo & Web Interface
 
-**InsightMesh** from Surfer AI is an enterprise-grade, multi-agent data engineering and product analytics platform built for **Atlys**. It completely automates the manual lifecycle from product feature specification (`spec.md`) and raw event logs (`events.ndjson`) to production-grade ClickHouse telemetry schemas, self-evolving semantic metadata, and PM-actionable diagnostic insights.
+- **LibreChat Web Interface:** `http://localhost:3080` (Docker Compose stack in `src/atlys_agentic/librechat/`)
+- **FastAPI Backend & Chat Gateway:** `http://localhost:8008` (OpenAI-compatible `/v1/chat/completions` endpoint)
+- **Live Ingestion Web Portal:** `http://localhost:8008/ui/ingestion`
+- **Langfuse Semantic Tracing Project:** [Langfuse Project Dashboard](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9)
+
+---
+
+## What It Does
+
+InsightMesh from Surfer AI is an enterprise-grade agentic data platform that collapses the manual, multi-week "tracking-PRD $\rightarrow$ schema engineering $\rightarrow$ analytical insight" cycle into a fully automated, traceable, and inspectable conversational pipeline:
+
+1. **Instrumentation Agent (CUJ 1):** Ingests product feature specifications (`spec.md`) and raw event streams (`events.ndjson`), infers 6-pillar ClickHouse schemas (query-predicate ordering `(timestamp, user_id)`, monthly partitioning `toYYYYMM(timestamp)`, `LowCardinality` dictionary encodings, 12-month TTL, and `SummingMergeTree` materialized views), validates storage invariants with bounded retry, and executes deployment behind a 2-turn Human-in-the-Loop (HITL) approval gate in LibreChat.
+2. **Context Agent (Librarian & Governance):** Serves as the sole database and metadata custodian. Maintains a living, versioned context layer in embedded **chDB** (`business_context`, `schema_registry`, `context_changelog`, `table_semantics`, and `insights`). Proactively flags metric denominator conflicts, data quality caveats (e.g. Android `os IS NULL`), and undocumented schema gaps.
+3. **Query Architect:** A precision SQL translation compiler shared across CUJ 1 and CUJ 2. Translates design intent into production ClickHouse DDL and analytical intent into typed `PlannedQuery` objects (5 cuts, intersection, daily time-series, alt-denominator headline) with strict origin tracking (`architect_llm` vs `architect_fallback`).
+4. **Analytics Agent (CUJ 2):** Translates natural-language business questions into multi-cut ClickHouse aggregations (device, country, destination, funnel stage, guest status), evaluates known platform issues (K1–K7), derives causal concentration ratios and date coincidences, enforces honest refusal on post-purchase metric boundary traps without hallucinating numbers, and synthesizes executive PM reports with calibrated confidence scores.
+
+---
+
+## The Stack & Integration Architecture
 
 ```
-                   ┌───────────────────────────────────────────────────────────┐
-                   │                     InsightMesh Core                      │
-                   ├─────────────────────────────┬─────────────────────────────┤
-                   │  1. Instrumentation Agent   │  ClickHouse 6-Pillar DDL    │
-                   │  2. Context Agent           │  chDB Governance & Vectors  │
-                   │  3. Query Architect         │  Precision SQL Translation  │
-                   │  4. Product Analyst Agent   │  Multi-Cut PM Root-Cause    │
-                   └─────────────────────────────┴─────────────────────────────┘
+                    ┌───────────────────────────────────────────────────────────┐
+                    │                    InsightMesh Engine                     │
+                    ├─────────────────────────────┬─────────────────────────────┤
+                    │  ClickHouse Cloud ('default')│  2.5M Events Analytical DB  │
+                    │  chDB (In-Process SQL)      │  Living Context & Vectors   │
+                    │  CrewAI Flows               │  Deterministic Workflows    │
+                    │  LibreChat                  │  Dual Persona Chat Interface│
+                    │  Langfuse & ClickStack      │  Two-Tier Observability     │
+                    │  LiteLLM + Google Gemini    │  Zero-Temp Reasoning & Emb  │
+                    └─────────────────────────────┴─────────────────────────────┘
 ```
 
-InsightMesh runs atop a high-throughput **ClickHouse Cloud** backend (~2.5 million historical events across 8 foundation tables), utilizes embedded **chDB** for an inspectable, zero-hallucination semantic context layer, provides native **LibreChat** conversational interfaces, and records two-tier telemetry via **Langfuse** (semantic reasoning) and **ClickStack / OpenTelemetry** (system performance).
+| Technology / Component | Version / Identifier | Architectural Role & Implementation Details |
+| :--- | :--- | :--- |
+| **Primary Datastore** | **ClickHouse Cloud** (`CLICKHOUSE_DATABASE=default`) | Analytical datastore holding **2,479,858 historical events** across 8 foundation tables plus newly ingested feature tables. Executes `windowFunnel`, `cosineDistance`, `SummingMergeTree` rollups, and multi-cut aggregations. |
+| **Context Datastore** | **chDB** (Embedded ClickHouse) | In-process ClickHouse engine (`metadata.sqlite` / local chDB session) storing 5 versioned tables: `schema_registry`, `business_context`, `context_changelog`, `table_semantics`, and `insights`. Zero dialect mismatch with ClickHouse Cloud. |
+| **Agent Framework** | **CrewAI Flows** | Deterministic sequential execution flows (`IngestionFlow` and `AnalysisFlow`) with strict `memory=False` to prevent opaque context hallucinations. All context is fetched JIT via explicit SQL. |
+| **Conversational UI** | **LibreChat** (Docker Compose) | Conversational frontend on port 3080 with dual personas: `Atlys Instrumentation Engineer` (`atlys-instrumentation`) and `Atlys Product Analyst` (`atlys-analyst`). State is maintained statelessly across turns via invisible HTML comments (`<!-- atlys:proposal -->`, `<!-- atlys:insight -->`). |
+| **Semantic Tracing** | **Langfuse** | End-to-end tracing across every agent step, prompt generation, tool execution, and context provenance. Every span records `input`, `output`, `metadata.agent`, and `metadata.why`. |
+| **System Observability**| **ClickStack / OpenTelemetry** | OpenTelemetry spans exporting query latencies, rows read, DDL execution time, and error metrics to ClickStack / HyperDX, correlated to Langfuse via a shared `trace_id`. |
+| **LLM Provider** | **Google Gemini** (`gemini/gemini-3-flash-preview`) | High-speed, high-reasoning LLM running at `temperature=0.0` for determinism. Embeddings generated via `text-embedding-004` (768 dimensions). |
 
 ---
 
-## 🏆 Rubric Alignment & Key Achievements
+## 📊 Foundation Dataset & ClickHouse Benchmark Evidence
 
-| Scoring Rubric Dimension | Weight | InsightMesh Implementation & Evidence | Documentation Reference |
-| :--- | :---: | :--- | :--- |
-| **ClickHouse & OSS Stack** | **25%** | • Production **ClickHouse Cloud** (`default`) with 2,479,858 rows.<br>• Advanced features: `windowFunnel`, `cosineDistance` vector search, `SummingMergeTree` rollups, `LowCardinality`, monthly partitions (`toYYYYMM`), non-ID ordering keys `(timestamp, user_id)`, 12-month TTL.<br>• Fully open-source: **CrewAI Flows**, **chDB**, **LibreChat**, **Langfuse**, **LiteLLM**. | [ARCHITECTURE.md](ARCHITECTURE.md#clickhouse-storage-mechanics)<br>[EVALUATION_REPORT.md](EVALUATION_REPORT.md#1-benchmark-telemetry-summary) |
-| **Problem Fit** | **20%** | • **CUJ 1 (Schema Ingestion)**: Spec + NDJSON $\rightarrow$ optimal DDL + daily MV + 2-turn HITL chat gate in LibreChat.<br>• **CUJ 2 (Analytics)**: Natural language question $\rightarrow$ multi-cut ClickHouse aggregation $\rightarrow$ K1–K7 anomaly correlation $\rightarrow$ actionable PM insight.<br>• **Context Traps**: Honest decline on post-purchase metric boundary traps; denominator conflict detection. | [ARCHITECTURE.md](ARCHITECTURE.md#cuj-1-schema-ingestion--evolution-pipeline)<br>[ARCHITECTURE.md](ARCHITECTURE.md#cuj-2-telemetry-analytics--pm-diagnosis-pipeline) |
-| **Technical Implementation** | **20%** | • Strict 4-agent roster with **Least Privilege & Custodianship** (Context Agent is sole DB writer; Instrumentation & Query Architect have zero DB access).<br>• Invariant safety validator with bounded 1-retry self-healing.<br>• Native `table_semantics` vector search for zero-shot spec resolution. | [ARCHITECTURE.md](ARCHITECTURE.md#agent-roster--least-privilege-custodianship-model)<br>[ARCHITECTURE.md](ARCHITECTURE.md#semantic-layer--vector-metadata-architecture) |
-| **Innovation** | **20%** | • **No Hidden LLM Memory** (`memory=False`): JIT SQL retrieval against `chDB` prevents context drift.<br>• **Stateless Chat State**: Zero server sessions; state persisted via invisible HTML comments (`<!-- atlys:proposal -->`, `<!-- atlys:insight -->`).<br>• **Two-Tier Observability**: Langfuse semantic reasoning + ClickStack system tracing linked by shared `trace_id`. | [ARCHITECTURE.md](ARCHITECTURE.md#stateless-conversation-state-machine)<br>[ARCHITECTURE.md](ARCHITECTURE.md#observability--telemetry-architecture) |
-| **Scalability & Impact** | **10%** | • Validated over **2,479,858 ClickHouse events** across 15 E2E benchmarks.<br>• **376.83 ms average query latency** across Easy, Medium, and Hard analytical queries.<br>• **100% accuracy** on 4-level evaluation test suite (traps, safety, multi-cut, unseen generalization). | [EVALUATION_REPORT.md](EVALUATION_REPORT.md#2-performance-and-latency-benchmarks) |
-| **Presentation** | **5%** | • Interactive **LibreChat Web UI** with dual personas.<br>• Comprehensive sequence diagrams, state machines, and complete trace links for all specs (`01_express_checkout` to `06_unseen`). | [README.md](#-librechat-web-ui-integration)<br>[EVALUATION_REPORT.md](EVALUATION_REPORT.md#4-problem-statement-evaluations-01-to-06) |
-
----
-
-## 📊 Dataset & ClickHouse Cloud Performance
-
-InsightMesh is pre-loaded and validated against Atlys's 8 foundation event tables in ClickHouse Cloud:
+The system was evaluated against Atlys's 8 foundation event tables loaded into ClickHouse Cloud (`CLICKHOUSE_DATABASE=default`):
 
 ```sql
-SELECT table, total_rows, formatReadableSize(total_bytes) AS size
-FROM system.tables WHERE database = 'default' AND engine LIKE '%MergeTree%';
+SELECT table, total_rows FROM system.tables WHERE database = 'default' AND engine LIKE '%MergeTree%';
 ```
 
-| Table Name | Event Category | Row Count | Primary Key & Ordering | Key Attributes |
-| :--- | :--- | :---: | :--- | :--- |
-| `destination_card_clicked` | Funnel Entry | **1,000,000** | `(timestamp, user_id)` | `destination`, `visa_type`, `flow` |
-| `search_typed` | Discovery | **599,630** | `(timestamp, user_id)` | `search_term`, `results_count` |
-| `landing_page_scrolled` | Engagement | **499,786** | `(timestamp, user_id)` | `scroll_depth_pct`, `time_on_page_s` |
-| `auth_completed` | Account Auth | **183,790** | `(timestamp, user_id)` | `auth_method`, `is_new_user` |
-| `application_started` | Funnel Core | **154,413** | `(timestamp, user_id)` | `destination`, `co_travelers`, `purpose` |
-| `document_uploaded` | Document Flow | **20,446** | `(timestamp, user_id)` | `doc_type`, `capture_mode`, `retry_count` |
-| `pay_now_clicked` | Checkout Intent | **14,739** | `(timestamp, user_id)` | `payment_method`, `amount`, `currency` |
-| `purchase_completed` | Conversion | **7,054** | `(timestamp, user_id)` | `value`, `currency`, `coupon_applied` |
-| **Total Foundation Events** | — | **2,479,858** | — | **100% Referential Integrity** |
+| Table Name | Category | Verified Rows in ClickHouse Cloud | Primary Sorting Key |
+| :--- | :--- | :---: | :--- |
+| `destination_card_clicked` | Top of Funnel | **1,000,000** | `(timestamp, user_id)` |
+| `search_typed` | Discovery | **599,630** | `(timestamp, user_id)` |
+| `landing_page_scrolled` | Engagement | **499,786** | `(timestamp, user_id)` |
+| `auth_completed` | Auth & Signup | **183,790** | `(timestamp, user_id)` |
+| `application_started` | Stage 1 Funnel | **154,413** | `(timestamp, user_id)` |
+| `document_uploaded` | Stage 2 Funnel | **20,446** | `(timestamp, user_id)` |
+| `pay_now_clicked` | Checkout Intent | **14,739** | `(timestamp, user_id)` |
+| `purchase_completed` | Stage 4 Conversion | **7,054** | `(timestamp, user_id)` |
+| **Total Foundation Events** | — | **2,479,858** | **100% Referential Match** |
 
-### Benchmark Execution Latency
-- **Suite Result:** `15/15 Passed (100%)`
-- **Total Suite Execution Time:** `10.02 seconds`
-- **Overall Query Latency:** `376.83 ms` (P50: `250.77 ms`, P95: `560.00 ms`)
-- **Core Derived Metrics:**
-  - Funnel Conversion Rate (`purchase_completed` ÷ `application_started`): **4.57%** (7,054 / 154,413)
-  - Gross Platform Revenue: **$19,627,982.00** (Average Order Value: $2,782.53)
-  - Passport Image Pass Rate: **88.76%** (18,147 / 20,446)
+### Benchmark Results
+- **15-Call Benchmark Suite:** `15/15 Passed (100%)`
+- **Overall Query Latency:** **`376.83 ms`** average across 2,479,858 rows (Easy: 519.87ms, Medium: 252.63ms, Hard: 357.98ms).
+- **Core Derived Baseline:** Funnel conversion rate: **4.57%** (7,054 purchases / 154,413 started applications); Gross Platform Revenue: **$19,627,982.00**.
 
 ---
 
-## 🏗️ System Architecture
-
-```mermaid
-flowchart TB
-    subgraph UI ["User Interfaces"]
-        LC["LibreChat Conversational UI<br/>(Port 3080)"]
-        CLI["CLI / Ingestion Runner<br/>(run_ingestion.py)"]
-        API["FastAPI REST & Chat Backend<br/>(Port 8008)"]
-    end
-
-    subgraph Agents ["CrewAI Multi-Agent Roster (memory=False)"]
-        CL["Context Agent / Librarian<br/>(Sole DB & Metadata Custodian)"]
-        IE["Instrumentation Engineer<br/>(6-Pillar ClickHouse DDL Architect)"]
-        QA["Query Architect<br/>(Precision SQL & DDL Compiler)"]
-        PA["Product Analyst Agent<br/>(Multi-Cut Diagnostics & Signal Derivation)"]
-    end
-
-    subgraph Stores ["Data & Context Layers"]
-        CHDB[("chDB (Embedded ClickHouse)<br/>• schema_registry<br/>• business_context<br/>• context_changelog<br/>• table_semantics<br/>• insights")]
-        CHCLOUD[("ClickHouse Cloud ('default')<br/>• 8 Foundation Tables (2.5M rows)<br/>• Feature Tables (01 to 06)<br/>• SummingMergeTree MVs")]
-    end
-
-    subgraph Observability ["Two-Tier Telemetry"]
-        LF[("Langfuse Semantic Tracing<br/>(Spans, Tokens, Context Provenance)")]
-        CS[("ClickStack / OpenTelemetry<br/>(Query Latency, DDL Execution, Errors)")]
-    end
-
-    LC --> API
-    CLI --> Agents
-    API --> Agents
-    
-    CL <-->|JIT Vector & SQL Queries| CHDB
-    CL <-->|DDL Execution & Ingestion| CHCLOUD
-    PA <-->|Read-Only SELECTs| CHCLOUD
-    IE -.->|Design Intent| QA
-    QA -.->|Rendered SQL| CL
-
-    Agents -.->|Semantic Spans| LF
-    Agents -.->|OTel Spans & Metrics| CS
-```
-
----
-
-## 🚀 Quick Start Guide (`RUN.md` Runbook)
+## 🚀 Quick-Start Setup & Execution (`RUN.md`)
 
 ### 1. Prerequisites
 - **Python**: `3.11+`
-- **ClickHouse Cloud**: Active cluster connection credentials
-- **Docker & Docker Compose**: (Optional, for LibreChat Web UI & ClickStack)
-- **Google Gemini API Key**: `GEMINI_API_KEY` (used for LLM reasoning and 768-dim embeddings)
-- **Langfuse Keys**: `LANGFUSE_PUBLIC_KEY` & `LANGFUSE_SECRET_KEY` (cloud or self-hosted)
+- **ClickHouse Cloud**: Active connection credentials
+- **Google Gemini API Key**: `GEMINI_API_KEY`
+- **Langfuse Keys**: `LANGFUSE_PUBLIC_KEY` & `LANGFUSE_SECRET_KEY`
+- **Docker Compose**: For running LibreChat
 
-### 2. Installation
+### 2. Virtual Environment & Package Installation
 ```bash
-# Clone repository
+# Clone the repository
 git clone https://github.com/deepesh17feb/InsightMesh.git
 cd InsightMesh
 
-# Create and activate virtual environment
+# Create and activate virtualenv
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install package in editable mode with all dependencies
+# Install dependencies in editable mode
 pip install --upgrade pip
 pip install -e .
 ```
 
 ### 3. Environment Configuration
-Copy `.env.example` to `src/atlys_agentic/config/.env` or repository root `.env`:
+Create `.env` in the root directory or in `src/atlys_agentic/config/.env`:
 ```ini
-# ClickHouse Cloud Connection
-CLICKHOUSE_HOST=your-instance.clickhouse.cloud
+CLICKHOUSE_HOST=your-clickhouse-host.clickhouse.cloud
 CLICKHOUSE_PORT=8443
 CLICKHOUSE_USER=default
 CLICKHOUSE_PASSWORD=your-password
 CLICKHOUSE_DATABASE=default
 CLICKHOUSE_SECURE=true
 
-# chDB Embedded Metadata Directory
 CHDB_PATH=./chdb_data
 
-# LLM Provider (Google Gemini via LiteLLM)
 LLM_MODEL=gemini/gemini-3-flash-preview
 GEMINI_API_KEY=your-gemini-api-key
 
-# Langfuse Observability
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_HOST=https://us.cloud.langfuse.com
 LANGFUSE_TRACING_ENABLED=true
 
-# CrewAI Settings
 CREWAI_DISABLE_TELEMETRY=true
 ```
 
-### 4. One-Command Execution
+### 4. Running the Complete System End-to-End
 
-#### Run Full E2E Accuracy & Invariant Test Suite:
+#### A. Run Test Suite & Invariant Safety Suite (88 tests)
 ```bash
 pytest -v
 ```
 
-#### Ingest a Feature Specification (CUJ 1):
+#### B. Ingest a Feature Specification (CUJ 1)
 ```bash
-# Dry run proposal review
-python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/01_express_checkout" --dry-run
-
-# Interactive live deployment gate
+# Interactive schema design and gated ClickHouse deployment
 python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/01_express_checkout"
+
+# Ingest the Unseen Spec (06_unseen)
+python -m atlys_agentic.run_ingestion --spec_dir "problem statment/specs/06_unseen"
 ```
 
-#### Start Backend API & LibreChat UI:
+#### C. Launch Web Services & LibreChat
 ```bash
-# Terminal 1: Start FastAPI backend (Port 8008)
+# Terminal 1: Launch FastAPI backend (Port 8008)
 python -m atlys_agentic.run_chat
 
-# Terminal 2: Start LibreChat UI (Port 3080)
+# Terminal 2: Launch LibreChat Web UI (Port 3080)
 docker compose -f src/atlys_agentic/librechat/docker-compose.librechat.yml up -d
 ```
-Access LibreChat at **`http://localhost:3080`**.
+Open **`http://localhost:3080`** in your browser and chat with **`Atlys Instrumentation Engineer`** or **`Atlys Product Analyst`**.
 
 ---
 
-## 💬 LibreChat Web UI Integration
+## 🏆 Scoring Rubric Evidence Summary
 
-InsightMesh connects natively to **LibreChat** via an OpenAI-compatible completion API (`/v1/chat/completions`) at `http://localhost:8008`.
-
-### Dedicated Agent Personas:
-1. **`Atlys Instrumentation Engineer`** (`atlys-instrumentation`):
-   - **Role:** Handles CUJ 1 feature schema proposals, ClickHouse 6-pillar mechanics review, materialized view generation, and Human-in-the-Loop deployment.
-   - **Example Prompts:**
-     - *"What specs are available for ingestion?"*
-     - *"Ingest spec 01_express_checkout"*
-     - *"Why did you lead the ordering key with timestamp instead of application_id?"*
-     - *"APPROVE"* (triggers gated ClickHouse Cloud DDL execution & event load).
-
-2. **`Atlys Product Analyst`** (`atlys-analyst`):
-   - **Role:** Handles CUJ 2 natural language analytical queries, 5-cut multi-dimensional breakdowns, K1–K7 known issue detection, and confidence scoring.
-   - **Example Prompts:**
-     - *"Conversion on express checkout looks down this month — what is driving it?"*
-     - *"Analyze coupon application rates and top rejection reasons for our checkout promo."*
-     - *"What is our on-time visa delivery rate?"* (demonstrates honest refusal on post-purchase metric boundary traps).
+| Rubric Criterion | Weight | Key Implementation Evidence | Deep Dive Reference |
+| :--- | :---: | :--- | :--- |
+| **ClickHouse & OSS Stack** | **25%** | • Live ClickHouse Cloud (`default`) with 2.5M rows.<br>• `windowFunnel`, `cosineDistance` vector search, `SummingMergeTree` rollups, `LowCardinality`, monthly partitions (`toYYYYMM`), non-ID ordering keys `(timestamp, user_id)`, 12-month TTL.<br>• Open-source stack: **CrewAI Flows**, **chDB**, **LibreChat**, **Langfuse**, **LiteLLM**. | [ARCHITECTURE.md](ARCHITECTURE.md#32-clickhouse-6-pillar-storage-mechanics)<br>[EVALUATION_REPORT.md](EVALUATION_REPORT.md#2-clickhouse-cloud-15-call-telemetry-benchmark-table) |
+| **Problem Fit** | **20%** | • **CUJ 1**: Automated feature schema evolution with 2-turn HITL gate in LibreChat.<br>• **CUJ 2**: Conversational multi-cut analytics with K1–K7 anomaly correlation.<br>• **Trap Honesty**: Refuses post-purchase metric boundary traps without hallucination. | [ARCHITECTURE.md](ARCHITECTURE.md#3-cuj-1-schema-ingestion--evolution-pipeline)<br>[ARCHITECTURE.md](ARCHITECTURE.md#4-cuj-2-telemetry-analytics--pm-diagnosis-pipeline) |
+| **Technical Implementation** | **20%** | • Strict 4-agent roster with Least-Privilege Data Custodianship (Context Agent is sole DB writer; Instrumentation & Query Architect have zero DB access).<br>• Generic LLM error handling with deterministic fallback preceding Instrumentation Engineer.<br>• Invariant safety validator with bounded 1-retry self-healing. | [ARCHITECTURE.md](ARCHITECTURE.md#2-agent-roster--least-privilege-custodianship-model)<br>[ARCHITECTURE.md](ARCHITECTURE.md#4-generic-llm-error-handling-architecture) |
+| **Innovation** | **20%** | • **No Hidden LLM Memory** (`memory=False`): JIT SQL retrieval prevents hallucination.<br>• **Stateless Chat State**: Invisible HTML comments preserve turn state without server sessions.<br>• **Two-Tier Observability**: Correlated Langfuse semantic traces + ClickStack OTel spans. | [ARCHITECTURE.md](ARCHITECTURE.md#6-stateless-conversation-state-machine)<br>[ARCHITECTURE.md](ARCHITECTURE.md#7-observability--telemetry-architecture) |
+| **Scalability & Impact** | **10%** | • Validated across **2,479,858 ClickHouse Cloud events**.<br>• **376.83 ms average query latency** across 15 real analytical queries.<br>• **100% test pass rate** (88/88 tests passing). | [EVALUATION_REPORT.md](EVALUATION_REPORT.md#1-executive-summary--verification-scorecard) |
+| **Presentation** | **5%** | • Native **LibreChat Web UI** with dual personas.<br>• Comprehensive Mermaid sequence and state diagrams with complete Langfuse trace deep links. | [ARCHITECTURE.md](ARCHITECTURE.md#11-high-level-c4-container-diagram)<br>[EVALUATION_REPORT.md](EVALUATION_REPORT.md#5-graded-surprise-round-spec-06-unseen-evaluation-06_unseen) |
 
 ---
 
-## 📂 Repository Layout
+## 📁 Submission Deliverables & Trace Index
 
-```text
-InsightMesh/
-├── README.md                           # Master Project Overview & Submission Guide
-├── ARCHITECTURE.md                     # Technical Deep Dive & Formal Specifications
-├── EVALUATION_REPORT.md                # 15-Call Benchmarks, Invariants & Spec Results
-├── RUN.md                              # Crisp Quick-Start & Operations Runbook
-├── docs/                               # Formal CUJ Technical Specifications
-│   ├── CUJ1.md                         # CUJ 1: Schema Ingestion & Evolution (Locked Spec)
-│   ├── CUJ2.md                         # CUJ 2: Telemetry Analytics & PM Diagnosis (Locked Spec)
-│   └── cuj_architecture.md             # Custodianship Model & Sequence Diagrams
-├── problem statment/                   # Problem Specifications & Event Samples
-│   ├── base_context.md                 # Base Business Context, Metrics, Caveats & K1-K7
-│   ├── data/                           # ClickHouse DDL & Parquet Foundation Tables
-│   └── specs/                          # Feature Specs (01 to 05, and 06_unseen)
-├── outputs/                            # Submission Artifacts & Telemetry Reports
-│   ├── submission/                     # Per-Spec DDL, Run Reports, and Insight Reports
-│   │   ├── 01_express_checkout/        # Spec 01 artifacts + live trace links
-│   │   ├── 02_group_family/            # Spec 02 artifacts + live trace links
-│   │   ├── 03_status_sharing/          # Spec 03 artifacts + live trace links
-│   │   ├── 04_abandoned_checkout_recovery/
-│   │   ├── 05_instant_forex/
-│   │   └── 06_unseen/                  # Unseen Round (Promo Coupon Checkout)
-│   └── e2e_telemetry_reports/          # 15 E2E Benchmark Logs over 2.5M Events
-├── src/atlys_agentic/                  # Core Python Package Source
-│   ├── agents.py                       # CrewAI Agent Personas (memory=False)
-│   ├── ch_client.py                    # ClickHouse Cloud HTTP Client
-│   ├── chdb_client.py                  # chDB Embedded Metadata & Vector Engine
-│   ├── tools_common.py                 # Shared Vector Distance, Invariants & Confidence
-│   ├── tools_cuj1.py                   # CUJ 1 Ingestion, MV, Field Mapping & Semantic Tools
-│   ├── tools_cuj2.py                   # CUJ 2 JIT Probe, Query Plan, Signal Derivation Tools
-│   ├── tracing.py                      # Langfuse Two-Tier OpenTelemetry Tracer
-│   ├── run_chat.py                     # FastAPI Chat & Ingestion Web Portal
-│   ├── run_ingestion.py                # Standalone CLI Ingestion Runner
-│   ├── config/                         # Environment & Agent YAML Configurations
-│   └── librechat/                      # LibreChat Docker Compose & Yaml Profiles
-└── tests/                              # 4-Level Complexity Test Suites
-    ├── test_accuracy_evaluation.py     # Acceptance Criteria Accuracy Benchmarks
-    ├── test_cuj2_analytics_flow.py     # CUJ 2 Multi-Cut & Invariant Safety Suite
-    ├── test_tools.py                   # Deterministic Agent Tools Tests
-    └── test_chdb_client.py             # Metadata Catalog & Vector Distance Tests
-```
-
----
-
-## 🔗 Live Artifacts & Trace Index
-
-| Feature Specification | Generated Schema DDL | Evaluation Report | Graded Langfuse Trace Link |
+| Feature Specification | Generated Schema DDL | Execution & Run Report | Graded Langfuse Trace Link |
 | :--- | :--- | :--- | :--- |
-| **01 Express Checkout** | [`schema.sql`](outputs/submission/01_express_checkout/schema.sql) | [`run_report.md`](outputs/submission/01_express_checkout/run_report.md) | [View Trace on Langfuse](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/73a9709f1bf3253b218413155ae16c4f) |
-| **02 Group & Family** | [`schema.sql`](outputs/submission/02_group_family/schema.sql) | [`run_report.md`](outputs/submission/02_group_family/run_report.md) | [View Trace on Langfuse](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/e354b5f50fde4b80b409dc8296b678df) |
-| **03 Status Sharing** | [`schema.sql`](outputs/submission/03_status_sharing/schema.sql) | [`run_report.md`](outputs/submission/03_status_sharing/run_report.md) | [View Trace on Langfuse](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/01170d3578d5c81648a14c5d4152586e) |
-| **04 Abandoned Recovery** | [`schema.sql`](outputs/submission/04_abandoned_checkout_recovery/schema.sql) | [`run_report.md`](outputs/submission/04_abandoned_checkout_recovery/run_report.md) | [View Trace on Langfuse](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/3f9eb83fdc670a6469dcaf52c9c1ad0b) |
-| **05 Instant Forex** | [`schema.sql`](outputs/submission/05_instant_forex/schema.sql) | [`run_report.md`](outputs/submission/05_instant_forex/run_report.md) | [View Trace on Langfuse](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/d1b9f0ecff85d62f7bec61985325cdd9) |
+| **01 Express Checkout** | [`schema.sql`](outputs/submission/01_express_checkout/schema.sql) | [`run_report.md`](outputs/submission/01_express_checkout/run_report.md) | [View Trace 73a9709f...](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/73a9709f1bf3253b218413155ae16c4f) |
+| **02 Group & Family** | [`schema.sql`](outputs/submission/02_group_family/schema.sql) | [`run_report.md`](outputs/submission/02_group_family/run_report.md) | [View Trace e354b5f5...](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/e354b5f50fde4b80b409dc8296b678df) |
+| **03 Status Sharing** | [`schema.sql`](outputs/submission/03_status_sharing/schema.sql) | [`run_report.md`](outputs/submission/03_status_sharing/run_report.md) | [View Trace 01170d35...](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/01170d3578d5c81648a14c5d4152586e) |
+| **04 Abandoned Recovery** | [`schema.sql`](outputs/submission/04_abandoned_checkout_recovery/schema.sql) | [`run_report.md`](outputs/submission/04_abandoned_checkout_recovery/run_report.md) | [View Trace 3f9eb83f...](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/3f9eb83fdc670a6469dcaf52c9c1ad0b) |
+| **05 Instant Forex** | [`schema.sql`](outputs/submission/05_instant_forex/schema.sql) | [`run_report.md`](outputs/submission/05_instant_forex/run_report.md) | [View Trace d1b9f0ec...](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/d1b9f0ecff85d62f7bec61985325cdd9) |
 | **06 Unseen (Surprise Round)** | [`schema.sql`](outputs/submission/06_unseen/schema.sql) | [`run_report.md`](outputs/submission/06_unseen/run_report.md) | [View Ingestion Trace](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/5b2b8bbc50f0fae0389ca50d0e1e9559)<br>[View Analytics Trace](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/ce7dce3da46846962595f3a26d4e3d5e) |
 
 ---
-*Developed for Click-a-thon 2026 by the InsightMesh Team.*
+*Created for Click-a-thon 2026 Submission by Surfer AI.*
