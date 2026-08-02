@@ -216,3 +216,38 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# git worktrees (superpowers subagent-driven-development)
+.worktrees/
+
+# Atlys agentic runtime data & chDB session storage
+outputs/
+**/outputs/
+!outputs/submission/
+!outputs/submission/**
+!outputs/submission_summary.json
+chdb_data/
+**/chdb_data/
+**/chdb_data/**
+src/atlys_agentic/chdb_data/
+src/atlys_agentic/outputs/
+src/atlys_agentic/submission/
+atlys_agentic/chdb_data/
+atlys_agentic/outputs/
+atlys_agentic/submission/
+
+
+# ClickHouse / chDB generated data directories
+problem statment/data/
+problem\ statment/data/
+**/data/store/
+**/data/metadata/
+**/data/cores/
+**/data/status
+**/data/uuid
+**/store/
+**/metadata/
+**/status
+**/uuid
+**/cores/
+
