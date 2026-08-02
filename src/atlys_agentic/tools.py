@@ -63,6 +63,16 @@ from atlys_agentic.tools_cuj2 import (
     Tool_Synthesize_Insight,
 )
 
+# 4. Orchestrator Tools
+from atlys_agentic.tools_orchestrator import (
+    Tool_Batch_Scan_Specs,
+    Tool_Discover_Workspace_Paths,
+    Tool_Resolve_Path_Or_Spec,
+)
+
+# Aliases
+infer_table_name_from_spec_or_id = Tool_Infer_Table_Name
+
 __all__ = [
     # Common
     "PlannedQuery",
@@ -80,6 +90,7 @@ __all__ = [
     "Tool_Emit_Viz",
     # CUJ 1
     "Tool_Infer_Table_Name",
+    "infer_table_name_from_spec_or_id",
     "Tool_Infer_Schema",
     "Tool_Generate_MV",
     "Tool_Consult_Internal_Tables",
@@ -107,4 +118,8 @@ __all__ = [
     "Tool_Synthesize_Insight",
     "Tool_Persist_Insight_CUJ2",
     "Tool_Emit_CUJ2_Submission_Artifacts",
+    # Orchestrator
+    "Tool_Resolve_Path_Or_Spec",
+    "Tool_Discover_Workspace_Paths",
+    "Tool_Batch_Scan_Specs",
 ]

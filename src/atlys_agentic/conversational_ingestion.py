@@ -73,23 +73,31 @@ def detect_chat_intent(
         return "GREETING", {}
 
     latest_msg = messages[-1].get("content", "").strip()
-    latest_lower = latest_msg.lower()
+    cleaned_msg = re.sub(r"^[\s\-\*•>#]+", "", latest_msg).strip()
+    latest_lower = cleaned_msg.lower()
 
     # 1. Check for Path / Catalog Discovery
-    path_keywords = [
-        "available path", "available paths", "give me available path", "give me available paths",
-        "where are specs", "where are the specs", "list paths", "show paths",
-        "workspace paths", "what paths", "paths available", "inspect paths",
-    ]
-    if any(kw in latest_lower for kw in path_keywords):
+    is_path_query = bool(
+        re.search(r"\b(?:available|list|show|what|which|where|give\s+me|inspect)\b.*\b(?:path|paths)\b", latest_lower)
+        or re.search(r"\b(?:path|paths)\b.*\b(?:available|ingest|ingestion|exist)\b", latest_lower)
+        or any(kw in latest_lower for kw in [
+            "available path", "available paths", "give me available path", "give me available paths",
+            "where are specs", "where are the specs", "list paths", "show paths",
+            "workspace paths", "what paths", "paths available", "inspect paths", "paths for ingestion",
+        ])
+    )
+    if is_path_query:
         return "LIST_PATHS", {}
 
-    list_spec_keywords = [
-        "what specs", "list specs", "show specs", "available specs",
-        "which specs", "catalog", "which features", "specs available",
-        "what specs are available",
-    ]
-    if any(kw in latest_lower for kw in list_spec_keywords):
+    is_spec_catalog_query = bool(
+        re.search(r"\b(?:available|list|show|what|which)\b.*\b(?:spec|specs|catalog|features)\b", latest_lower)
+        or any(kw in latest_lower for kw in [
+            "what specs", "list specs", "show specs", "available specs",
+            "which specs", "catalog", "which features", "specs available",
+            "what specs are available",
+        ])
+    )
+    if is_spec_catalog_query:
         return "LIST_SPECS", {}
 
     # Check for proposal token in message history
@@ -152,7 +160,7 @@ def detect_chat_intent(
 
     # 7. Orchestrator Target Resolution for Ingestion (resolves raw paths, directories, slugs)
     from atlys_agentic import tools_orchestrator
-    resolved = tools_orchestrator.Tool_Resolve_Path_Or_Spec(latest_msg)
+    resolved = tools_orchestrator.Tool_Resolve_Path_Or_Spec(cleaned_msg)
     if resolved.get("found"):
         if is_explicit_proposal or any(kw in latest_lower for kw in ["ingest", "schema", "table", "ddl", "propose"]) or model == "atlys-instrumentation":
             return "INGESTION_PROPOSAL", {
@@ -163,7 +171,7 @@ def detect_chat_intent(
 
     # Generic ingestion proposal keywords with spec references
     if is_explicit_proposal or any(kw in latest_lower for kw in ["ingest spec", "propose schema", "design schema", "create table for"]):
-        inferred_table = tools.infer_table_name_from_spec_or_id(latest_msg)
+        inferred_table = tools.Tool_Infer_Table_Name(cleaned_msg, "")
         return "INGESTION_PROPOSAL", {"spec_id": inferred_table, "table_name": inferred_table}
 
     # 8. Check for Greetings / General info
@@ -172,6 +180,7 @@ def detect_chat_intent(
 
     # 9. Default to Analytics (CUJ 2)
     return "ANALYTICS", {"question": latest_msg}
+
 
 
 
