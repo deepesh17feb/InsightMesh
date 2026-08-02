@@ -238,36 +238,36 @@ sequenceDiagram
     participant IE as Instrumentation Engineer (Pure Architect)
     participant QA as Query Architect (SQL Compiler)
     participant VAL as Invariant Validator
-    participant CH as ClickHouse Cloud ('default')
+    participant CH as ClickHouse Cloud (default DB)
 
-    Operator->>LC: 1. Type "ingest 01_express_checkout"
-    LC->>API: 2. POST /v1/chat/completions (model: atlys-instrumentation)
-    API->>CL: 3. Invoke IngestionFlow
-    CL->>CH: 4. Refresh live catalog (system.tables & system.columns)
-    CL->>chDB: 5. Fetch schema_registry, business_context & metric definitions
-    CL->>IE: 6. Handoff Context Briefing (existing tables, caveats, spec text, sample events)
+    Operator->>LC: Type "ingest 01_express_checkout"
+    LC->>API: POST /v1/chat/completions (model: atlys-instrumentation)
+    API->>CL: Invoke IngestionFlow
+    CL->>CH: Refresh live catalog (system.tables and system.columns)
+    CL->>chDB: Fetch schema_registry, business_context and metric definitions
+    CL->>IE: Handoff Context Briefing (existing tables, caveats, spec text, sample events)
 
-    IE->>IE: 7. Formulate 6-Pillar Storage Design, Field Mapping & MV Justification
-    IE->>QA: 8. Hand off Design Intent
-    QA->>QA: 9. Render ClickHouse DDL, SummingMergeTree MV, and INSERT statement
+    IE->>IE: Formulate 6-Pillar Storage Design, Field Mapping and MV Justification
+    IE->>QA: Hand off Design Intent
+    QA->>QA: Render ClickHouse DDL, SummingMergeTree MV, and INSERT statement
 
-    QA->>VAL: 10. Validate 4 Invariants (no id-first, partitioning, TTL, LowCardinality)
-    VAL-->>CL: 11. Validation passed (0 violations; bounded 1-retry if failed)
+    QA->>VAL: Validate 4 Invariants (no id-first, partitioning, TTL, LowCardinality)
+    VAL-->>CL: Validation passed (0 violations - bounded 1-retry if failed)
 
-    CL->>chDB: 12. Run context_diff (detect denominator conflicts, caveats, gaps)
-    CL-->>API: 13. Proposal Markdown + Hidden Token (<!-- atlys:proposal ... -->)
-    API-->>LC: 14. Render Interactive Proposal Card in Chat
+    CL->>chDB: Run context_diff (detect denominator conflicts, caveats, gaps)
+    CL-->>API: Proposal Markdown + Hidden Token (atlys:proposal)
+    API-->>LC: Render Interactive Proposal Card in Chat
 
-    Operator->>LC: 15. Type "APPROVE"
+    Operator->>LC: Type "APPROVE"
 
-    LC->>API: 16. Forward "APPROVE" with conversation history
-    API->>CL: 17. Reconstruct State from Hidden Token & Trigger Execution
-    CL->>CH: 18a. Execute CREATE TABLE & CREATE MATERIALIZED VIEW
-    CL->>CH: 18b. Load events.ndjson (FORMAT JSONEachRow)
-    CL->>chDB: 18c. Register schema v+1, upsert business_context & context_changelog
-    CL->>chDB: 18d. Write table_semantics (LLM summary + concepts + 768-dim embedding)
-    CL-->>API: 19. Emit Receipt, Artifacts & Langfuse Trace URL
-    API-->>LC: 20. Display Deployment Receipt & Verified Row Count
+    LC->>API: Forward "APPROVE" with conversation history
+    API->>CL: Reconstruct State from Hidden Token and Trigger Execution
+    CL->>CH: Execute CREATE TABLE and CREATE MATERIALIZED VIEW
+    CL->>CH: Load events.ndjson (FORMAT JSONEachRow)
+    CL->>chDB: Register schema v+1, upsert business_context and context_changelog
+    CL->>chDB: Write table_semantics (LLM summary + concepts + 768-dim embedding)
+    CL-->>API: Emit Receipt, Artifacts and Langfuse Trace URL
+    API-->>LC: Display Deployment Receipt and Verified Row Count
 ```
 
 ### 6.2 CUJ 2: Telemetry Analytics & PM Diagnosis (11-Phase Pipeline)
