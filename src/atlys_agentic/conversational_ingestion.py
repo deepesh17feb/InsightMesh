@@ -68,14 +68,22 @@ def detect_chat_intent(
     messages: list[dict[str, str]],
     model: str = "atlys-analyst",
 ) -> tuple[str, dict[str, Any]]:
-    """Classify the user's intent across conversation turns per docs/CUJ1.md Section 6."""
+    """Classify user intent using Orchestrator resolution across conversation turns."""
     if not messages:
         return "GREETING", {}
 
     latest_msg = messages[-1].get("content", "").strip()
     latest_lower = latest_msg.lower()
 
-    # 1. Check for Catalog Discovery / List Specs
+    # 1. Check for Path / Catalog Discovery
+    path_keywords = [
+        "available path", "available paths", "give me available path", "give me available paths",
+        "where are specs", "where are the specs", "list paths", "show paths",
+        "workspace paths", "what paths", "paths available", "inspect paths",
+    ]
+    if any(kw in latest_lower for kw in path_keywords):
+        return "LIST_PATHS", {}
+
     list_spec_keywords = [
         "what specs", "list specs", "show specs", "available specs",
         "which specs", "catalog", "which features", "specs available",
@@ -127,7 +135,14 @@ def detect_chat_intent(
                 "question": latest_msg,
             }
 
-    # 5. Check for Analytical Queries (CUJ 2)
+    # 5. Check for Batch Folder Ingestion
+    batch_keywords = ["ingest folder", "ingest directory", "batch ingest", "ingest all specs", "scan folder", "scan directory"]
+    for bkw in batch_keywords:
+        if bkw in latest_lower:
+            folder_arg = latest_msg.split(bkw, 1)[-1].strip().strip("\"'") or "problem statment/specs"
+            return "BATCH_INGEST_PROPOSAL", {"folder_path": folder_arg}
+
+    # 6. Check for Analytical Queries (CUJ 2)
     analytics_keywords = ["conversion", "lift", "drop", "drop-off", "otp", "rate", "funnel", "bottleneck", "regression", "trend", "delta"]
     proposal_keywords = ["ingest", "propose schema", "design schema", "create table", "propose table", "ddl for", "table ddl", "schema for"]
     is_explicit_proposal = any(kw in latest_lower for kw in proposal_keywords)
@@ -135,31 +150,29 @@ def detect_chat_intent(
     if any(kw in latest_lower for kw in analytics_keywords) and not is_explicit_proposal:
         return "ANALYTICS", {"question": latest_msg}
 
-    # 6. Check for Feature Spec Ingestion Proposal
-    available = paths.available_spec_ids()
-    for spec in available:
-        spec_num = spec.split("_")[0]
-        spec_slug = "_".join(spec.split("_")[1:])
-        if (
-            spec in latest_lower
-            or f"spec {spec_num}" in latest_lower
-            or f"spec_{spec_num}" in latest_lower
-            or spec_slug in latest_lower
-        ):
-            if is_explicit_proposal or any(kw in latest_lower for kw in ["ingest", "schema", "table", "ddl", "propose"]) or model == "atlys-instrumentation":
-                return "INGESTION_PROPOSAL", {"spec_id": spec, "table_name": spec_slug}
+    # 7. Orchestrator Target Resolution for Ingestion (resolves raw paths, directories, slugs)
+    from atlys_agentic import tools_orchestrator
+    resolved = tools_orchestrator.Tool_Resolve_Path_Or_Spec(latest_msg)
+    if resolved.get("found"):
+        if is_explicit_proposal or any(kw in latest_lower for kw in ["ingest", "schema", "table", "ddl", "propose"]) or model == "atlys-instrumentation":
+            return "INGESTION_PROPOSAL", {
+                "spec_id": resolved["spec_id"],
+                "table_name": resolved["table_name"],
+                "spec_dir": resolved["spec_dir"],
+            }
 
     # Generic ingestion proposal keywords with spec references
     if is_explicit_proposal or any(kw in latest_lower for kw in ["ingest spec", "propose schema", "design schema", "create table for"]):
         inferred_table = tools.infer_table_name_from_spec_or_id(latest_msg)
         return "INGESTION_PROPOSAL", {"spec_id": inferred_table, "table_name": inferred_table}
 
-    # 7. Check for Greetings / General info
+    # 8. Check for Greetings / General info
     if latest_lower in ["hi", "hello", "hey", "help", "who are you", "what can you do"]:
         return "GREETING", {}
 
-    # 8. Default to Analytics (CUJ 2)
+    # 9. Default to Analytics (CUJ 2)
     return "ANALYTICS", {"question": latest_msg}
+
 
 
 def format_available_specs_card() -> str:
@@ -189,6 +202,58 @@ def format_available_specs_card() -> str:
         'Say *"ingest 01_express_checkout"* to design a schema.',
     ])
     return "\n".join(lines)
+
+
+def format_available_paths_card() -> str:
+    """Format discovered workspace dataset paths, spec files, and readiness per Orchestrator discovery."""
+    from atlys_agentic import tools_orchestrator
+    catalog = tools_orchestrator.Tool_Discover_Workspace_Paths()
+    lines = [
+        "### 🗺️ Workspace Ingestion Catalog & Available Paths",
+        "",
+        "| Spec ID | Target Table | Relative Path | Events | Status |",
+        "| :--- | :--- | :--- | :--- | :--- |",
+    ]
+    for item in catalog:
+        events_str = "✅ events.ndjson" if item["has_events_ndjson"] else "❌ no events"
+        status_badge = "`instrumented`" if item["is_instrumented"] else "`ready to ingest`"
+        lines.append(f"| `{item['spec_id']}` | `{item['table_name']}` | `{item['relative_path']}` | {events_str} | {status_badge} |")
+
+    lines.extend([
+        "",
+        "**Available Actions:**",
+        '- Ingest by name: *"ingest 01_express_checkout"*',
+        '- Ingest by path: *"ingest problem statment/specs/01_express_checkout"*',
+        '- Ingest whole folder: *"ingest folder problem statment/specs"*',
+    ])
+    return "\n".join(lines)
+
+
+def format_batch_proposal_card(folder_path: str) -> str:
+    """Format batch proposal scanning for a parent folder."""
+    from atlys_agentic import tools_orchestrator
+    specs = tools_orchestrator.Tool_Batch_Scan_Specs(folder_path)
+    if not specs:
+        return f"### ⚠️ No ingestible spec packages found under `{folder_path}`.\n\nEnsure directories contain `spec.md` or `events.ndjson`."
+
+    lines = [
+        f"### 📦 Batch Ingestion Plan for `{folder_path}`",
+        "",
+        f"Discovered **{len(specs)} ingestible spec package(s)**:",
+        "",
+        "| # | Spec ID | Target Table | Path |",
+        "| :- | :--- | :--- | :--- |",
+    ]
+    for idx, s in enumerate(specs, 1):
+        lines.append(f"| {idx} | `{s['spec_id']}` | `{s['table_name']}` | `{s['path']}` |")
+
+    lines.extend([
+        "",
+        "To generate a schema proposal for any specific spec, say:",
+        f'- *"ingest {specs[0]["spec_id"]}*"',
+    ])
+    return "\n".join(lines)
+
 
 
 def handle_followup_question(

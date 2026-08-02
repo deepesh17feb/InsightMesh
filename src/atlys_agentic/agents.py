@@ -287,4 +287,44 @@ build_context_librarian = build_context_agent
 build_product_analyst = build_analytics_agent
 
 
+@tool("resolve_path_or_spec")
+def _resolve_path_or_spec_tool(input_str: str) -> dict:
+    """Resolve raw directory path, file path, or spec slug into a validated spec directory."""
+    from atlys_agentic import tools_orchestrator
+    return tools_orchestrator.Tool_Resolve_Path_Or_Spec(input_str)
+
+
+@tool("discover_workspace_paths")
+def _discover_workspace_paths_tool(root_dir: str = "") -> list:
+    """Discover all available spec directories and telemetry datasets across the workspace."""
+    from atlys_agentic import tools_orchestrator
+    return tools_orchestrator.Tool_Discover_Workspace_Paths(root_dir or None)
+
+
+@tool("batch_scan_specs")
+def _batch_scan_specs_tool(folder_path: str) -> list:
+    """Recursively scan a parent folder for all valid spec directories ready for ingestion."""
+    from atlys_agentic import tools_orchestrator
+    return tools_orchestrator.Tool_Batch_Scan_Specs(folder_path)
+
+
+def build_orchestrator_agent() -> Agent:
+    """Build the front-door Orchestrator Agent responsible for path resolution,
+    workspace discovery, intent routing, and multi-spec batch coordination."""
+    return Agent(
+        role="Atlys Systems Orchestrator & Concierge",
+        goal="Parse raw user requests, resolve filesystem directory paths and feature specs, discover workspace datasets, and coordinate CUJ 1 and CUJ 2 flows seamlessly.",
+        backstory="""You are the lead Systems Orchestrator for Atlys Agentic Analytics. You understand developer intent,
+fuzzy directory paths, multi-spec batch ingestion workflows, and catalog discovery. You resolve ambiguous paths to verified
+spec packages and dispatch tasks cleanly to the Instrumentation Engineer or Product Analyst.""",
+        tools=[_resolve_path_or_spec_tool, _discover_workspace_paths_tool, _batch_scan_specs_tool],
+        llm=llm(),
+        memory=False,
+        verbose=True,
+        allow_delegation=False,
+        max_iter=5,
+    )
+
+
+
 

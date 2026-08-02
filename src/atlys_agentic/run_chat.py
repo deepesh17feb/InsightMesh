@@ -192,11 +192,16 @@ def chat_completions(req: ChatCompletionRequest):
         run_mode="librechat_client",
     ):
         if is_instrumentation_model:
-            # CUJ 1: Dedicated Instrumentation Engineer
+            # CUJ 1: Dedicated Instrumentation Engineer & Orchestrator
             if intent == "GREETING":
                 content = conversational_ingestion.INSTRUMENTATION_GREETING_MD
+            elif intent == "LIST_PATHS":
+                content = conversational_ingestion.format_available_paths_card()
             elif intent == "LIST_SPECS":
                 content = conversational_ingestion.format_available_specs_card()
+            elif intent == "BATCH_INGEST_PROPOSAL":
+                folder = context_data.get("folder_path", "problem statment/specs")
+                content = conversational_ingestion.format_batch_proposal_card(folder)
             elif intent == "HITL_APPROVE":
                 table_hint = context_data.get("table_hint")
                 content = conversational_ingestion.handle_hitl_deployment(
@@ -234,14 +239,17 @@ def chat_completions(req: ChatCompletionRequest):
             else:
                 content = conversational_ingestion.INSTRUMENTATION_SCOPE_NOTICE_MD
         else:
-            # CUJ 2: Dedicated Analytics Agent
+            # CUJ 2: Dedicated Analytics Agent & Orchestrator
             if intent == "GREETING":
                 content = prompts.GREETING_RESPONSE_MD
-            elif intent in ("INGESTION_PROPOSAL", "LIST_SPECS", "HITL_APPROVE", "INGESTION_FOLLOWUP"):
+            elif intent == "LIST_PATHS":
+                content = conversational_ingestion.format_available_paths_card()
+            elif intent in ("INGESTION_PROPOSAL", "LIST_SPECS", "BATCH_INGEST_PROPOSAL", "HITL_APPROVE", "INGESTION_FOLLOWUP"):
                 content = conversational_ingestion.ANALYST_SCOPE_NOTICE_MD
             else:
                 result = analysis_flow.run(question=question, spec_id="chat", base_sql=_DEFAULT_BASE_SQL)
                 content = result.get("answer_md", "")
+
 
         tracing.span(
             trace_id,
