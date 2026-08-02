@@ -47,7 +47,7 @@ FROM default.destination_card_clicked
 WHERE timestamp >= '2026-01-01 00:00:00' AND timestamp <= '2026-06-30 23:59:59'
 ```
 
-🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/d1fed76af0f7cd4e21ca8cea3628e01f
+🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/74668d3420a68d8d86419118877a6297
 📄 `outputs/submission/base_funnel/insight_report.md`
 
-<!-- atlys:insight table=destination_card_clicked metric=browse_volume finding_key=destination_card_clicked::browse_volume::device_type::ios trace=d1fed76af0f7cd4e21ca8cea3628e01f -->
+<!-- atlys:insight table=destination_card_clicked metric=browse_volume finding_key=destination_card_clicked::browse_volume::device_type::ios trace=74668d3420a68d8d86419118877a6297 -->

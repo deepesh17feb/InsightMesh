@@ -1,9 +1,9 @@
 {
   "spec_id": "06_unseen",
   "table_name": "promo_coupon_checkout",
-  "timestamp": "2026-08-02T03:58:32.705249+00:00",
-  "trace_id": "a82d9533e2b28b824781eb3bc8a15cc7",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/26e706dd8beb696925eac91ad44a6cff",
+  "timestamp": "2026-08-02T05:06:41.820645+00:00",
+  "trace_id": "bcfd1f3f521550f5222bfcf6fb942dd0",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/162e29ed0e2ec6108a7e8b706773d977",
   "run_mode": "live_run",
   "strategy": "EVOLVE",
   "strategy_why": "",
@@ -98,7 +98,7 @@
     "description": "This is the **unseen sixth spec** promised in [`PROBLEM_STATEMENT.md`](../PROBLEM_STATEMENT.md): same format as the five known specs, same fictional universe, released to all teams simultaneously. Push it through your pipeline end to end \u2014 the output must come from your system, evidenced by the trace. **No trace, no credit.**",
     "concepts": "promo coupon checkout, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
     "embedding_dims": 0,
-    "version": 1
+    "version": 12
   },
   "reasoning_chain": [
     {
@@ -406,7 +406,7 @@
     {
       "step": "context_agent::write_table_semantics",
       "agent": "context_agent",
-      "why": "wrote table description, concepts, and embedding (0 dims) for promo_coupon_checkout into chDB table_semantics (v1)",
+      "why": "wrote table description, concepts, and embedding (0 dims) for promo_coupon_checkout into chDB table_semantics (v12)",
       "input": {
         "spec_id": "06_unseen",
         "table": "promo_coupon_checkout"
@@ -417,7 +417,7 @@
         "description": "This is the **unseen sixth spec** promised in [`PROBLEM_STATEMENT.md`](../PROBLEM_STATEMENT.md): same format as the five known specs, same fictional universe, released to all teams simultaneously. Push it through your pipeline end to end \u2014 the output must come from your system, evidenced by the trace. **No trace, no credit.**",
         "concepts": "promo coupon checkout, event, id, device_type, os, app_version, geoip_country_code, city, client_lib",
         "embedding_dims": 0,
-        "version": 1
+        "version": 12
       }
     }
   ]

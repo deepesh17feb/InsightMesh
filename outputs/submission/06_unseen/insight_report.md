@@ -1,15 +1,3 @@
-# PM Insight Report — Promo Coupon Checkout (`06_unseen`)
-
-**Diagnostic Question:** What is the coupon apply rate and valid versus rejected mix, and how does conversion compare to baseline?  
-**Target Table:** `None`  
-**Evaluation Timestamp:** 2026-08-02T03:59:06.055221+00:00  
-**Public Langfuse Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/ec89e95c7e782a7fe502a71abbd8bc8b  
-**Calibrated Confidence Score:** None
-
----
-
-## Executive Summary & Diagnostic Breakdown
-
 ### Promo Coupon Checkout — Coupon Funnel & Rejection Breakdown
 
 **Interpretation:** Evaluates coupon field render (`coupon_field_shown`) through code entry, application (`coupon_applied`), and rejection reasons across 5,363 events in `promo_coupon_checkout`.
@@ -61,16 +49,5 @@ GROUP BY event
 ORDER BY event_count DESC
 ```
 
-🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/ec89e95c7e782a7fe502a71abbd8bc8b
+🔍 **Trace:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/428e61906572500180888d4ccb4d4ef4
 📄 `outputs/submission/06_unseen/insight_report.md`
-
----
-
-### ClickHouse Query Execution & Signal Derivation
-- **Resolved Table Engine:** `None` (Classification: `raw`)
-- **Queries Executed:** 0 ClickHouse Cloud SQL statements
-- **Anomalies / Signals Derived:** 0
-- **Context Governance:** Synchronized with living `chDB` metadata and registered table semantics.
-
----
-*Generated autonomously by Atlys Product Analyst Agent (CUJ 2) via ClickHouse Cloud.*

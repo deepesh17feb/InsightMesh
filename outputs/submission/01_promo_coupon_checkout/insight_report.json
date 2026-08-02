@@ -2,18 +2,19 @@
   "question": "Coupon apply rate (field_shown to coupon_applied) and valid vs rejected mix; what are the top reject reasons?",
   "spec_id": "01_promo_coupon_checkout",
   "table_name": "promo_coupon_checkout",
-  "interpretation": "Compute the step-through rate from 'field_shown' to 'coupon_applied' and the ratio of success vs. failure events.",
+  "interpretation": "Calculate the step-through rate from 'field_shown' to 'coupon_applied' events; however, rejection reasons and success/failure status are not available in the schema.",
   "answerability": {
     "chosen_table": "promo_coupon_checkout",
     "spec_id": "01_promo_coupon_checkout",
     "answerable": "partial",
-    "interpretation": "Compute the step-through rate from 'field_shown' to 'coupon_applied' and the ratio of success vs. failure events.",
+    "interpretation": "Calculate the step-through rate from 'field_shown' to 'coupon_applied' events; however, rejection reasons and success/failure status are not available in the schema.",
     "metric": "step_through_rate",
     "denominator_used": "field_shown",
     "denominator_conflict": null,
     "missing": [
       "reject_reason column",
-      "error_code column - the table lacks a dimension to categorize the specific reasons for coupon rejection"
+      "error_message column",
+      "status/is_success column to distinguish valid vs rejected attempts"
     ],
     "required_cuts": [
       "device_type",
@@ -22,7 +23,7 @@
       "event",
       "is_guest"
     ],
-    "why": "The table contains the event stream necessary to calculate the apply rate and the mix of valid vs. rejected attempts, but it does not contain a column for the specific rejection reasons requested."
+    "why": "The table tracks the sequence of coupon events allowing for an apply rate calculation, but it lacks the specific columns needed to categorize or list rejection reasons."
   },
   "headline": {
     "baseline_rate": 62.4,
@@ -163,13 +164,14 @@
         "chosen_table": "promo_coupon_checkout",
         "spec_id": "01_promo_coupon_checkout",
         "answerable": "partial",
-        "interpretation": "Compute the step-through rate from 'field_shown' to 'coupon_applied' and the ratio of success vs. failure events.",
+        "interpretation": "Calculate the step-through rate from 'field_shown' to 'coupon_applied' events; however, rejection reasons and success/failure status are not available in the schema.",
         "metric": "step_through_rate",
         "denominator_used": "field_shown",
         "denominator_conflict": null,
         "missing": [
           "reject_reason column",
-          "error_code column - the table lacks a dimension to categorize the specific reasons for coupon rejection"
+          "error_message column",
+          "status/is_success column to distinguish valid vs rejected attempts"
         ],
         "required_cuts": [
           "device_type",
@@ -178,9 +180,9 @@
           "event",
           "is_guest"
         ],
-        "why": "The table contains the event stream necessary to calculate the apply rate and the mix of valid vs. rejected attempts, but it does not contain a column for the specific rejection reasons requested."
+        "why": "The table tracks the sequence of coupon events allowing for an apply rate calculation, but it lacks the specific columns needed to categorize or list rejection reasons."
       },
-      "why": "The table contains the event stream necessary to calculate the apply rate and the mix of valid vs. rejected attempts, but it does not contain a column for the specific rejection reasons requested."
+      "why": "The table tracks the sequence of coupon events allowing for an apply rate calculation, but it lacks the specific columns needed to categorize or list rejection reasons."
     },
     {
       "step": "context_agent::known_issue_match",
@@ -202,7 +204,7 @@
       "step": "query_architect::plan_queries",
       "agent": "query_architect",
       "input": {
-        "interpretation": "Compute the step-through rate from 'field_shown' to 'coupon_applied' and the ratio of success vs. failure events.",
+        "interpretation": "Calculate the step-through rate from 'field_shown' to 'coupon_applied' events; however, rejection reasons and success/failure status are not available in the schema.",
         "table": "promo_coupon_checkout"
       },
       "output": {
@@ -305,6 +307,6 @@
       "why": "Persisted insight record with finding_key 'promo_coupon_checkout::step_through_rate::device_type::ios' to chDB insights table for cross-question trend continuity."
     }
   ],
-  "trace_id": "4ba7982aca17014bccddfbbbbcc25916",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/4ba7982aca17014bccddfbbbbcc25916"
+  "trace_id": "94376301d762f9b8a511a9d65daf40b2",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/94376301d762f9b8a511a9d65daf40b2"
 }

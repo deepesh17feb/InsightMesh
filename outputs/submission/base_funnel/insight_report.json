@@ -2,14 +2,14 @@
   "question": "What is total browse volume on destination cards in H1 2026, and what proportion is from unauthenticated guest users?",
   "spec_id": "base_funnel",
   "table_name": "destination_card_clicked",
-  "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest = 1.",
+  "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest is true.",
   "answerability": {
     "chosen_table": "destination_card_clicked",
     "spec_id": "base_funnel",
     "answerable": "yes",
-    "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest = 1.",
+    "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest is true.",
     "metric": "browse_volume",
-    "denominator_used": "destination_card_clicked",
+    "denominator_used": "total_destination_card_clicked_events",
     "denominator_conflict": null,
     "missing": [],
     "required_cuts": [
@@ -19,7 +19,7 @@
       "event",
       "is_guest"
     ],
-    "why": "The destination_card_clicked table directly tracks the 'browse' action and contains the is_guest flag to distinguish unauthenticated users."
+    "why": "The destination_card_clicked table directly captures the 'browse volume' on cards and includes the is_guest flag to identify unauthenticated users."
   },
   "headline": {
     "baseline_rate": 62.4,
@@ -65,7 +65,7 @@
   "trend": {
     "state": "persisting",
     "finding_key": "destination_card_clicked::browse_volume::device_type::ios",
-    "prior_finding": "A prior insight on 2026-03-18 recorded the same finding (`destination_card_clicked::browse_volume::device_type::ios`). This has been unresolved for 13 days."
+    "prior_finding": "A prior insight on 2026-08-02 recorded the same finding (`destination_card_clicked::browse_volume::device_type::ios`). This has been unresolved for 13 days."
   },
   "confidence": {
     "score": 0.87,
@@ -160,9 +160,9 @@
         "chosen_table": "destination_card_clicked",
         "spec_id": "base_funnel",
         "answerable": "yes",
-        "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest = 1.",
+        "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest is true.",
         "metric": "browse_volume",
-        "denominator_used": "destination_card_clicked",
+        "denominator_used": "total_destination_card_clicked_events",
         "denominator_conflict": null,
         "missing": [],
         "required_cuts": [
@@ -172,9 +172,9 @@
           "event",
           "is_guest"
         ],
-        "why": "The destination_card_clicked table directly tracks the 'browse' action and contains the is_guest flag to distinguish unauthenticated users."
+        "why": "The destination_card_clicked table directly captures the 'browse volume' on cards and includes the is_guest flag to identify unauthenticated users."
       },
-      "why": "The destination_card_clicked table directly tracks the 'browse' action and contains the is_guest flag to distinguish unauthenticated users."
+      "why": "The destination_card_clicked table directly captures the 'browse volume' on cards and includes the is_guest flag to identify unauthenticated users."
     },
     {
       "step": "context_agent::known_issue_match",
@@ -196,7 +196,7 @@
       "step": "query_architect::plan_queries",
       "agent": "query_architect",
       "input": {
-        "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest = 1.",
+        "interpretation": "Total count of destination_card_clicked events and the percentage of those events where is_guest is true.",
         "table": "destination_card_clicked"
       },
       "output": {
@@ -306,6 +306,6 @@
       "why": "Persisted insight record with finding_key 'destination_card_clicked::browse_volume::device_type::ios' to chDB insights table for cross-question trend continuity."
     }
   ],
-  "trace_id": "d1fed76af0f7cd4e21ca8cea3628e01f",
-  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/d1fed76af0f7cd4e21ca8cea3628e01f"
+  "trace_id": "74668d3420a68d8d86419118877a6297",
+  "trace_url": "https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/74668d3420a68d8d86419118877a6297"
 }

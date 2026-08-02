@@ -1,8 +1,8 @@
 # CUJ 1 Ingestion Run Report — `06_unseen`
 
 - **Target Table:** `promo_coupon_checkout`
-- **Execution Timestamp:** `2026-08-02T03:58:32.705175+00:00`
-- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/26e706dd8beb696925eac91ad44a6cff
+- **Execution Timestamp:** `2026-08-02T05:06:41.820584+00:00`
+- **Trace URL:** https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9/traces/162e29ed0e2ec6108a7e8b706773d977
 - **Run Mode:** `live_run`
 
 ---
@@ -118,4 +118,4 @@ app-open / web visit. This is the headline number reported to leadership.; Denom
 9. **context_agent::load_events** (context_agent): loaded 5,363 events from events.ndjson into ClickHouse Cloud table promo_coupon_checkout
 10. **context_agent::register_schema_version** (context_agent): registered table 'promo_coupon_checkout' version 2 in schema_registry
 11. **context_agent::sync_context** (context_agent): upserted 19 attributes into business_context and context_changelog with trace attribution
-12. **context_agent::write_table_semantics** (context_agent): wrote table description, concepts, and embedding (0 dims) for promo_coupon_checkout into chDB table_semantics (v1)
+12. **context_agent::write_table_semantics** (context_agent): wrote table description, concepts, and embedding (0 dims) for promo_coupon_checkout into chDB table_semantics (v12)
