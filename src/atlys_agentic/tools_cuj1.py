@@ -273,23 +273,17 @@ def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str, dry_run: bool = Fa
             "dry_run": True,
         }
 
-    # Execute on primary ClickHouse
+    # Execute DDL directly on primary ClickHouse Cloud
     try:
-        if not os.environ.get("PYTEST_CURRENT_TEST"):
-            clickhouse_mcp.execute_query(ddl)
-        else:
-            ch_client.command(ddl)
+        ch_client.command(ddl)
     except Exception as err:
-        try:
-            ch_client.select(f"DROP TABLE IF EXISTS {table_name}")
-        except Exception:
-            pass
         return {
-            "status": "rolled_back",
+            "status": "failed",
             "table": table_name,
             "version": 0,
             "error": str(err),
         }
+
 
     try:
         chdb_client.run(ddl, fmt="CSV")
