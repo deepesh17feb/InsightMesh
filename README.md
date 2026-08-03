@@ -27,6 +27,7 @@ InsightMesh is fully deployed and accessible via two production interfaces:
     2. **`Atlys Product Analyst` (`atlys-analyst`):** Unified CUJ 2 agent for business question answering, 3-guard semantic retrieval, multi-cut ClickHouse aggregations, K1–K7 anomaly correlation, and PM insight synthesis.
 - **FastAPI Backend Gateway:** `http://localhost:8008` (OpenAI-compatible `/v1/chat/completions` connecting UI to CrewAI Flows)
 - **Langfuse Semantic Tracing Project:** [Langfuse Project Dashboard](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9)
+- **Langfuse Semantic Tracing Project:** [Langfuse Project Dashboard](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9)
 
 ---
 
@@ -63,6 +64,7 @@ InsightMesh from Surfer AI is an enterprise-grade agentic data platform that col
 | **Agent Framework** | **CrewAI Flows** | Deterministic sequential execution flows (`IngestionFlow` and `AnalysisFlow`) with strict `memory=False` to prevent opaque context hallucinations. All context is fetched JIT via explicit SQL. |
 | **Unified Interface** | **LibreChat** (Docker Compose) | Unified conversational UI on port 3080 with 2 configured agent models (`atlys-instrumentation` and `atlys-analyst`). State is maintained statelessly across turns via invisible HTML comments (`<!-- atlys:proposal -->`, `<!-- atlys:insight -->`). |
 | **Semantic Tracing** | **Langfuse** | End-to-end tracing across every agent step, prompt generation, tool execution, and context provenance. Every span records `input`, `output`, `metadata.agent`, and `metadata.why`. |
+| **System Observability**| **ClickStack / OpenTelemetry** | OpenTelemetry spans exporting query latencies, rows read, DDL execution time, and error metrics to ClickStack / HyperDX, correlated to Langfuse via a shared `trace_id`. |
 | **LLM Provider** | **Google Gemini** (`gemini/gemini-3-flash-preview`) | High-speed, high-reasoning LLM running at `temperature=0.0` for determinism. Embeddings generated via `text-embedding-004` (768 dimensions). |
 
 ---
@@ -103,9 +105,7 @@ sequenceDiagram
 
 > 📘 **Full Cloud Deployment Guide:** For step-by-step instructions on setting up Render and Vercel, see [`docs/deployment-guide.md`](docs/deployment-guide.md).
 
-
 ---
-
 ## 📊 Foundation Dataset & ClickHouse Benchmark Evidence
 
 The system was evaluated against Atlys's 8 foundation event tables loaded into ClickHouse Cloud (`CLICKHOUSE_DATABASE=default`):

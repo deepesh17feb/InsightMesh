@@ -251,10 +251,6 @@ problem\ statment/data/
 **/uuid
 **/cores/
 
-# Large media files (exceeding GitHub limits)
-*.mov
-*.mp4
-*.mkv
-*.avi
+# Large media files
 demo/*.mov
 
