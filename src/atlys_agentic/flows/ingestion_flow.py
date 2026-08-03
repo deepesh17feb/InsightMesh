@@ -502,3 +502,43 @@ def run(
         "diff_result": flow.state.diff_result,
         "trace_id": flow.state.trace_id,
     }
+
+
+class ProposalResult(BaseModel):
+    table_name: str = ""
+    spec_id: str = ""
+    ddl: str = ""
+    mv_ddl: str = ""
+    proposal_md: str = ""
+    state: IngestionState | None = None
+
+
+def generate_proposal(
+    spec_id: str,
+    table_name: str | None = None,
+    dry_run: bool = True,
+) -> ProposalResult:
+    flow = IngestionFlow()
+    flow.state.spec_id = spec_id
+    flow.state.table_name = table_name or ""
+    flow.state.dry_run = dry_run
+
+    mode = "dry_run" if dry_run else "live_run"
+    with tracing.trace(
+        f"clickathon-{mode}-{spec_id}",
+        input={"spec_id": spec_id, "table_name": table_name, "dry_run": dry_run},
+        run_mode=mode,
+    ):
+        flow.infer_schema()
+        flow.dry_run_audit()
+        summary = flow.format_proposal_summary()
+
+    return ProposalResult(
+        table_name=flow.state.table_name,
+        spec_id=flow.state.spec_id,
+        ddl=flow.state.ddl,
+        mv_ddl=flow.state.mv_ddl,
+        proposal_md=summary,
+        state=flow.state,
+    )
+

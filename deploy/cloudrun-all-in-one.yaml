@@ -1,0 +1,122 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: insightmesh-app
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "3"
+        run.googleapis.com/container-dependencies: '{"librechat":["backend","mongodb"]}'
+    spec:
+      containers:
+        # Ingress Container: LibreChat UI (receives external user traffic)
+        - name: librechat
+          image: REGION-docker.pkg.dev/PROJECT_ID/insightmesh-docker/librechat:latest
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: MONGO_URI
+              value: "mongodb://127.0.0.1:27017/LibreChat"
+            - name: BACKEND_URL
+              value: "http://127.0.0.1:8008"
+            - name: CREDS_KEY
+              value: "f3ca3c5b36260f7572d559477c2554fe0ec4357c6661675b42b01a12e54d21b0"
+            - name: CREDS_IV
+              value: "e6a394f1c3835cd79d1b1ff825029b38"
+            - name: JWT_SECRET
+              value: "1618629f864f33b3a619047b40d3d4919bc335f8b3824ef75249b1a2e5c97a6d"
+            - name: JWT_REFRESH_SECRET
+              value: "7f4c0296b960518f8d689d7b40d3d4919bc335f8b3824ef75249b1a2e5c97a6d"
+            - name: ALLOW_REGISTRATION
+              value: "true"
+            - name: CHECK_EMAIL_VERIFICATION
+              value: "false"
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          startupProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 8
+
+        # Sidecar 1: InsightMesh FastAPI Backend (CrewAI + chDB + ClickHouse)
+        - name: backend
+          image: REGION-docker.pkg.dev/PROJECT_ID/insightmesh-docker/backend:latest
+          env:
+            - name: PORT
+              value: "8008"
+            - name: GEMINI_API_KEY
+              value: "${GEMINI_API_KEY}"
+            - name: LLM_MODEL
+              value: "gemini/gemini-2.0-flash"
+            - name: CLICKHOUSE_HOST
+              value: "${CLICKHOUSE_HOST}"
+            - name: CLICKHOUSE_PORT
+              value: "${CLICKHOUSE_PORT:-8443}"
+            - name: CLICKHOUSE_USER
+              value: "${CLICKHOUSE_USER:-default}"
+            - name: CLICKHOUSE_PASSWORD
+              value: "${CLICKHOUSE_PASSWORD}"
+            - name: CLICKHOUSE_DATABASE
+              value: "${CLICKHOUSE_DATABASE:-default}"
+            - name: CLICKHOUSE_SECURE
+              value: "${CLICKHOUSE_SECURE:-true}"
+            - name: CHDB_PATH
+              value: "/tmp/chdb_data"
+            - name: LANGFUSE_PUBLIC_KEY
+              value: "${LANGFUSE_PUBLIC_KEY}"
+            - name: LANGFUSE_SECRET_KEY
+              value: "${LANGFUSE_SECRET_KEY}"
+            - name: LANGFUSE_HOST
+              value: "${LANGFUSE_HOST:-https://us.cloud.langfuse.com}"
+            - name: LANGFUSE_TRACING_ENABLED
+              value: "${LANGFUSE_TRACING_ENABLED:-true}"
+            - name: CREWAI_DISABLE_TELEMETRY
+              value: "true"
+          resources:
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8008
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 6
+
+        # Sidecar 2: MongoDB (LibreChat state storage)
+        - name: mongodb
+          image: mongo:7.0
+          args: ["--bind_ip", "127.0.0.1"]
+          volumeMounts:
+            - name: mongo-storage
+              mountPath: /data/db
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          startupProbe:
+            tcpSocket:
+              port: 27017
+            initialDelaySeconds: 3
+            periodSeconds: 3
+            failureThreshold: 6
+
+      volumes:
+        - name: mongo-storage
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi

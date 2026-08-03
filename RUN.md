@@ -124,3 +124,16 @@ outputs/submission/
     ├── run_report.md           # Ingestion receipt, 5,363 rows loaded, trace link
     └── insight_report.md       # Coupon funnel & rejection analysis
 ```
+
+---
+
+## 6. Cloud Deployment: GCP Cloud Run
+
+Deploy the entire InsightMesh stack (**LibreChat UI + FastAPI Backend + MongoDB**) to **Google Cloud Platform (GCP) Cloud Run** using a single command:
+
+```bash
+bash scripts/deploy_gcp.sh
+```
+
+See [`DEPLOY_GCP.md`](file:///usr/local/google/home/deepeshmw/.gemini/jetski/worktrees/InsightMesh/deploy_gcp_cloud_run/DEPLOY_GCP.md) for full architecture diagrams, custom deployment YAMLs, and local multi-container simulation instructions.
+

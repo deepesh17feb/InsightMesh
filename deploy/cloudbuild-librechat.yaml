@@ -1,0 +1,6 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-east1-docker.pkg.dev/gmec-developers-deepeshmw/insightmesh-docker/librechat:latest', '-f', 'Dockerfile.librechat', '.']
+images:
+  - 'us-east1-docker.pkg.dev/gmec-developers-deepeshmw/insightmesh-docker/librechat:latest'
+timeout: '1200s'

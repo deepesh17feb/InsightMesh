@@ -303,8 +303,9 @@ def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str, dry_run: bool = Fa
     new_ver = (existing[0].get("v", 0) + 1) if (existing and existing[0].get("v") is not None) else 1
 
     try:
+        escaped_ddl = ddl.replace("'", "''")
         chdb_client.run(
-            f"INSERT INTO schema_registry VALUES ('{table_name}', '{ddl.replace('\'', '\'\'')}', '{json.dumps(cols)}', '{spec_id}', {new_ver}, now())",
+            f"INSERT INTO schema_registry VALUES ('{table_name}', '{escaped_ddl}', '{json.dumps(cols)}', '{spec_id}', {new_ver}, now())",
             fmt="CSV",
         )
     except Exception:
@@ -371,12 +372,13 @@ def Tool_Context_Upsert(
         change_type = "insert"
 
     def_escaped = definition.replace("'", "''")
+    before_def_escaped = before_def.replace("'", "''")
     chdb_client.run(
         f"INSERT INTO business_context VALUES ('{section}', '{key}', '{def_escaped}', {new_version}, now())",
         fmt="CSV",
     )
     chdb_client.run(
-        f"INSERT INTO context_changelog VALUES (now(), '{change_type}', '{before_def.replace('\'', '\'\'')}', '{def_escaped}', '{agent}', '{trace_id}')",
+        f"INSERT INTO context_changelog VALUES (now(), '{change_type}', '{before_def_escaped}', '{def_escaped}', '{agent}', '{trace_id}')",
         fmt="CSV",
     )
     return new_version
