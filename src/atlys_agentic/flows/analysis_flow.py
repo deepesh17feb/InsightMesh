@@ -193,15 +193,15 @@ def _heuristic_classify_intent(question: str) -> dict:
     # Questions about this system itself, as opposed to what the telemetry shows.
     # Checked after greeting and abuse, before the analytical default.
     repo_patterns = [
-        r"\b(cuj|cuj1|cuj2)\b",
-        r"\b(readme|architecture|repo|repository|codebase|module|source code)\b",
+        r"\b(what is|what's|explain|describe|define) (cuj|cuj1|cuj2|cuj\s?\d)\b",
+        r"\b(readme|architecture|repo|repository|codebase|source code)\b",
         r"\b(spec|specification) (file|document|doc)\b",
         r"\bhow (does|do) (this|the|it) (system|repo|repository|code|project|flow|pipeline)\b",
-        r"\bhow does the \w+ (flow|agent|tool|client|classifier|index)\b",
-        r"\bwhere (is|are) .*(implement|defined|located|configured)",
+        r"\bhow does the (ingestion|analysis|analytics|repo|instrumentation|context|orchestrator|intent) (flow|agent|tool|client|classifier|index)\b",
+        r"\bwhere (is|are) .*(implement|defined|configured)",
         r"\bhow (do|can) i (run|start|deploy|install|setup|set up)\b",
         r"\bexplain (the|this) (architecture|design|flow|pipeline|schema design)\b",
-        r"\b(langfuse|span contract|tracing contract)\b",
+        r"\b(langfuse (contract|schema|integration|setup|config)|span contract|tracing contract)\b",
     ]
     if any(re.search(p, q_lower) for p in repo_patterns):
         return {"intent": "repo_knowledge", "detected_spec": None, "response": None}

@@ -274,6 +274,13 @@ def test_heuristic_keeps_telemetry_questions_analytical():
         "why did express checkout conversion drop on iOS?",
         "is there an OTP drop during verification?",
         "show me the funnel breakdown by device_type",
+        "how does the checkout flow convert users on iOS?",
+        "how does the signup flow perform week over week?",
+        "why did the express checkout module see a drop in conversion?",
+        "did CUJ 2 conversion drop this week?",
+        "is the CUJ2 funnel showing a decline for android?",
+        "where are the dropped users located, by country?",
+        "is langfuse showing latency spikes for the checkout span?",
     ]:
         assert analysis_flow._heuristic_classify_intent(question)["intent"] == "analytical", question
 
