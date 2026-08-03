@@ -12,15 +12,20 @@
 
 ---
 
-## 🌐 Hosted Demo & Unified Web Interface
+## 🌐 Production Cloud Deployment & Unified Interfaces
 
-InsightMesh provides a **single unified conversational interface in LibreChat** (`http://localhost:3080`) powered by two dedicated agent models that handle both feature schema instrumentation and diagnostic analytics:
+InsightMesh is fully deployed and accessible via two production interfaces:
 
-- **LibreChat Web Interface:** `http://localhost:3080` (Docker Compose stack in `src/atlys_agentic/librechat/`)
-- **Configured LibreChat Agent Models:**
-  1. **`Atlys Instrumentation Engineer` (`atlys-instrumentation`):** Unified CUJ 1 agent for feature spec ingestion, 6-pillar ClickHouse DDL generation, interactive architectural Q&A, and 2-turn Human-in-the-Loop deployment approval (`APPROVE` / `REJECT`).
-  2. **`Atlys Product Analyst` (`atlys-analyst`):** Unified CUJ 2 agent for business question answering, 3-guard semantic retrieval, multi-cut ClickHouse aggregations, K1–K7 anomaly correlation, and PM insight synthesis.
-- **FastAPI Backend Gateway:** `http://localhost:8008` (OpenAI-compatible `/v1/chat/completions` endpoint connecting LibreChat to CrewAI Flows)
+* **🚀 Public Cloud Deployment (Render + Vercel):**
+  - **Web Application (Vercel):** [`frontend/`](frontend) — Next.js 14, Tailwind CSS, real-time SSE token streaming, and dual agent selection open to all internet users.
+  - **Agent Engine (Render):** [`render.yaml`](render.yaml) & [`Dockerfile.backend`](Dockerfile.backend) — High-performance FastAPI microservice exposing OpenAI-compatible `/v1/chat/completions` and interactive `/docs` Swagger UI.
+  - **📖 Complete Deployment Guide:** See [`docs/deployment-guide.md`](docs/deployment-guide.md) for 1-click Render and Vercel setup.
+
+* **💻 Local LibreChat Interface (`http://localhost:3080`):**
+  - Docker Compose stack in [`src/atlys_agentic/librechat/`](src/atlys_agentic/librechat/) with 2 pre-configured agent models:
+    1. **`Atlys Instrumentation Engineer` (`atlys-instrumentation`):** Unified CUJ 1 agent for feature spec ingestion, 6-pillar ClickHouse DDL generation, interactive architectural Q&A, and 2-turn Human-in-the-Loop deployment approval (`APPROVE` / `REJECT`).
+    2. **`Atlys Product Analyst` (`atlys-analyst`):** Unified CUJ 2 agent for business question answering, 3-guard semantic retrieval, multi-cut ClickHouse aggregations, K1–K7 anomaly correlation, and PM insight synthesis.
+- **FastAPI Backend Gateway:** `http://localhost:8008` (OpenAI-compatible `/v1/chat/completions` connecting UI to CrewAI Flows)
 - **Langfuse Semantic Tracing Project:** [Langfuse Project Dashboard](https://us.cloud.langfuse.com/project/cmpwirpg5009oad0esljbiev9)
 
 ---
@@ -58,8 +63,46 @@ InsightMesh from Surfer AI is an enterprise-grade agentic data platform that col
 | **Agent Framework** | **CrewAI Flows** | Deterministic sequential execution flows (`IngestionFlow` and `AnalysisFlow`) with strict `memory=False` to prevent opaque context hallucinations. All context is fetched JIT via explicit SQL. |
 | **Unified Interface** | **LibreChat** (Docker Compose) | Unified conversational UI on port 3080 with 2 configured agent models (`atlys-instrumentation` and `atlys-analyst`). State is maintained statelessly across turns via invisible HTML comments (`<!-- atlys:proposal -->`, `<!-- atlys:insight -->`). |
 | **Semantic Tracing** | **Langfuse** | End-to-end tracing across every agent step, prompt generation, tool execution, and context provenance. Every span records `input`, `output`, `metadata.agent`, and `metadata.why`. |
-| **System Observability**| **ClickStack / OpenTelemetry** | OpenTelemetry spans exporting query latencies, rows read, DDL execution time, and error metrics to ClickStack / HyperDX, correlated to Langfuse via a shared `trace_id`. |
 | **LLM Provider** | **Google Gemini** (`gemini/gemini-3-flash-preview`) | High-speed, high-reasoning LLM running at `temperature=0.0` for determinism. Embeddings generated via `text-embedding-004` (768 dimensions). |
+
+---
+
+### 🔄 End-to-End Request Serving Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User Browser / LibreChat
+    participant Vercel as Vercel Frontend (Next.js 14)
+    participant Render as Render Backend (FastAPI Engine)
+    participant CrewAI as CrewAI Agent Orchestrator
+    participant Gemini as Google Gemini 3 Flash LLM
+    participant ClickHouse as ClickHouse Cloud / chDB
+    participant Langfuse as Langfuse Tracing
+
+    User->>Vercel: 1. User submits natural language query or "ingest 01_express_checkout"
+    Vercel->>Render: 2. POST /v1/chat/completions (SSE streaming request)
+    Render->>Langfuse: 3. Start trace session with correlation ID
+    Render->>CrewAI: 4. Route to IngestionFlow (CUJ 1) or AnalysisFlow (CUJ 2)
+    
+    rect rgb(25, 35, 55)
+        Note over CrewAI,Gemini: Tool Calling & Reasoning Loop
+        CrewAI->>Gemini: 5. Construct prompt with living schema & business context
+        Gemini-->>CrewAI: 6. Request tool execution (Schema Inference / SQL Query)
+        CrewAI->>ClickHouse: 7. Execute DDL audit or multi-cut analytical SQL
+        ClickHouse-->>CrewAI: 8. Return query dataset / validation receipt
+        CrewAI->>Gemini: 9. Context feedback for synthesis
+        Gemini-->>CrewAI: 10. Generate calibrated DDL, MV proposal, or PM diagnostic report
+    end
+
+    CrewAI->>Langfuse: 11. Finalize trace (tokens, latency, tool metadata)
+    CrewAI-->>Render: 12. Stream token chunks
+    Render-->>Vercel: 13. SSE data stream (data: {"delta": {"content": "..."}})
+    Vercel-->>User: 14. Real-time rendering with syntax-highlighted SQL
+```
+
+> 📘 **Full Cloud Deployment Guide:** For step-by-step instructions on setting up Render and Vercel, see [`docs/deployment-guide.md`](docs/deployment-guide.md).
+
 
 ---
 
