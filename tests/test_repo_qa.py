@@ -215,3 +215,34 @@ def test_crew_failure_is_logged_not_silently_swallowed(monkeypatch):
 
     # The failure was actually recorded, not swallowed.
     assert any(name == "repo_agent_failed" for name, _ in recorded_spans)
+
+
+def test_crew_failure_survives_a_broken_tracing_span(monkeypatch):
+    """If tracing.span itself raises while recording a Crew failure, repo_qa.answer must
+    still degrade gracefully and return the full contract — never propagate."""
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-for-test")
+
+    class _BoomCrew:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def kickoff(self):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(repo_qa, "Crew", _BoomCrew)
+    monkeypatch.setattr(repo_qa, "Task", lambda **kwargs: object())
+
+    def _span_that_blows_up_on_the_failure_record(trace_id, name, input, output, **kwargs):
+        # The unrelated "repo_knowledge_retrieval" span (called earlier, unchanged by
+        # this fix) behaves normally; only recording the *failure itself* blows up —
+        # that's the specific call this fix must guard.
+        if name == "repo_agent_failed":
+            raise ValueError("span itself blew up")
+
+    monkeypatch.setattr(repo_qa.tracing, "span", _span_that_blows_up_on_the_failure_record)
+
+    result = repo_qa.answer("how do I run the backend")
+
+    assert set(result) == _RESPONSE_KEYS
+    assert result["confidence"]["score"] == 0.6
