@@ -1,7 +1,7 @@
 FROM ghcr.io/danny-avila/librechat:latest
 
 # Copy customized librechat configuration into the container
-COPY deploy/librechat.yaml /app/librechat.yaml
+COPY src/atlys_agentic/librechat/librechat.yaml /app/librechat.yaml
 
 ENV HOST=0.0.0.0 \
     PORT=8080 \

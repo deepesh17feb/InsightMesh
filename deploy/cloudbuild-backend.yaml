@@ -1,6 +1,0 @@
-steps:
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'us-east1-docker.pkg.dev/gmec-developers-deepeshmw/insightmesh-docker/backend:latest', '-f', 'Dockerfile.backend', '.']
-images:
-  - 'us-east1-docker.pkg.dev/gmec-developers-deepeshmw/insightmesh-docker/backend:latest'
-timeout: '1200s'

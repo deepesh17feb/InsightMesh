@@ -127,13 +127,16 @@ outputs/submission/
 
 ---
 
-## 6. Cloud Deployment: GCP Cloud Run
+## 6. Cloud Deployment: Render + Vercel Architecture
 
-Deploy the entire InsightMesh stack (**LibreChat UI + FastAPI Backend + MongoDB**) to **Google Cloud Platform (GCP) Cloud Run** using a single command:
+InsightMesh is architected as a decoupled cloud microservice stack:
 
-```bash
-bash scripts/deploy_gcp.sh
-```
+* **Backend Engine (Render.com)**:
+  - Dockerized FastAPI backend running CrewAI agent workflows, ClickHouse connectors, and chDB in-memory engine.
+  - Automatically configured via [`render.yaml`](render.yaml) for 1-click blueprint deployment.
+  - Exposes standard `/v1/chat/completions` and interactive `/docs` Swagger UI.
 
-See [`DEPLOY_GCP.md`](file:///usr/local/google/home/deepeshmw/.gemini/jetski/worktrees/InsightMesh/deploy_gcp_cloud_run/DEPLOY_GCP.md) for full architecture diagrams, custom deployment YAMLs, and local multi-container simulation instructions.
+* **Frontend UI (Vercel)**:
+  - Next.js 14 web application in [`frontend/`](frontend) featuring real-time SSE streaming, dual agent selection, and ClickHouse SQL code formatting.
+  - Deployable in 1 click via [Vercel](https://vercel.com/new) with zero configuration.
 
