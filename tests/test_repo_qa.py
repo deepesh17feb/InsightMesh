@@ -144,3 +144,39 @@ def test_read_repo_file_rejects_none_path():
     """None path should return an error string, not raise."""
     result = tools_repo.read_repo_file(None)
     assert result.startswith("Error:")
+
+
+from atlys_agentic import repo_qa
+
+_RESPONSE_KEYS = {
+    "answer_md", "executive_summary", "confidence", "known_issue_match",
+    "matched_known_issue", "cuts", "views", "sql_queries", "spec_id",
+    "table_name", "trace_id",
+}
+
+
+def test_answer_returns_the_standard_response_contract():
+    # Under PYTEST_CURRENT_TEST this takes the offline path and makes no network call.
+    result = repo_qa.answer("how do I run the backend")
+    assert set(result) == _RESPONSE_KEYS
+    assert result["spec_id"] == "repo_knowledge"
+    assert result["table_name"] == "none"
+    assert result["known_issue_match"] is False
+    assert result["sql_queries"] == []
+
+
+def test_answer_cites_the_files_it_used():
+    result = repo_qa.answer("how do I run the backend")
+    assert "RUN.md" in result["answer_md"]
+
+
+def test_answer_on_an_unmatchable_question_still_returns_the_contract():
+    result = repo_qa.answer("zzzz nonexistent qqqq")
+    assert set(result) == _RESPONSE_KEYS
+    assert result["confidence"]["score"] == 0.0
+
+
+def test_repo_agent_exposes_exactly_the_two_read_only_tools():
+    from atlys_agentic import agents
+    tool_names = {getattr(t, "name", "") for t in agents.build_repo_agent().tools}
+    assert tool_names == {"search_repo", "read_repo_file"}

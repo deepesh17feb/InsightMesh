@@ -278,3 +278,24 @@ build_product_analyst_synthesis_prompt = build_analytics_agent_synthesis_prompt
 build_instrumentation_engineer_prompt = build_instrumentation_agent_prompt
 build_context_librarian_prompt = build_context_agent_prompt
 
+
+def build_repo_qa_task_description(question: str, context_md: str) -> str:
+    """Construct the CrewAI task description for the Repository Knowledge Analyst."""
+    return (
+        "Answer the user's question about the InsightMesh system itself, using this "
+        "repository's documentation and source code as the only source of truth.\n\n"
+        f"User question: '{question}'\n\n"
+        "Pre-retrieved repository content, selected by keyword relevance:\n\n"
+        f"{context_md}\n\n"
+        "Instructions:\n"
+        "- If the content above answers the question, answer directly from it. Do not "
+        "call any tool.\n"
+        "- Only if it is insufficient, call `search_repo` with different terms, or "
+        "`read_repo_file` to read more of a file already cited above.\n"
+        "- Cite every source you use inline as `path:heading`.\n"
+        "- Never invent file paths, function names, or behaviour that is not in the "
+        "retrieved content. If the repository does not answer the question, say so "
+        "plainly.\n"
+        "- Answer in markdown, starting with a `### ` heading."
+    )
+
