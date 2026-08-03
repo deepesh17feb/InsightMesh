@@ -104,3 +104,43 @@ def test_read_repo_file_rejects_a_symlink_escaping_the_repo(tmp_path):
 
 def test_read_repo_file_reports_a_missing_file_without_raising():
     assert tools_repo.read_repo_file("no/such/file.md").startswith("Error:")
+
+
+def test_read_repo_file_negative_end_is_clamped():
+    """Negative end must not bypass MAX_LINES via Python's end-relative slice.
+
+    Regression test for: end=-1 used to return lines[0:-1], which is almost the
+    entire file, bypassing the MAX_LINES cap.
+    """
+    text = tools_repo.read_repo_file("src/atlys_agentic/specs/06_unseen/events.ndjson", start=0, end=-1)
+    assert len(text.splitlines()) <= tools_repo.MAX_LINES
+
+
+def test_read_repo_file_inverted_span_is_bounded():
+    """start > end should return bounded or empty output, never the whole file."""
+    text = tools_repo.read_repo_file("README.md", start=50, end=10)
+    assert len(text.splitlines()) <= tools_repo.MAX_LINES
+
+
+def test_read_repo_file_rejects_non_string_path():
+    """Non-string path should return an error string, not raise."""
+    result = tools_repo.read_repo_file(5)
+    assert result.startswith("Error:")
+
+
+def test_read_repo_file_rejects_non_integer_start():
+    """Non-integer start should return an error string, not raise."""
+    result = tools_repo.read_repo_file("README.md", start="abc")
+    assert result.startswith("Error:")
+
+
+def test_read_repo_file_rejects_non_integer_end():
+    """Non-integer end should return an error string, not raise."""
+    result = tools_repo.read_repo_file("README.md", end=None)
+    assert result.startswith("Error:")
+
+
+def test_read_repo_file_rejects_none_path():
+    """None path should return an error string, not raise."""
+    result = tools_repo.read_repo_file(None)
+    assert result.startswith("Error:")

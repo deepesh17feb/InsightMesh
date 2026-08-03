@@ -35,7 +35,11 @@ def _resolve_inside_repo(path: str) -> Path | None:
     follows symlinks before the containment check, which is what makes the check
     hold against traversal, absolute paths, and symlink escapes alike.
     """
-    if not path or not path.strip():
+    try:
+        if not path or not path.strip():
+            return None
+    except (AttributeError, TypeError):
+        # path is not a string (e.g., int, None, etc.)
         return None
     root = paths.REPO_ROOT.resolve()
     try:
@@ -64,6 +68,15 @@ def read_repo_file(path: str, start: int = 0, end: int = 200) -> str:
     except OSError as exc:
         return f"Error: could not read {path}: {exc}"
 
-    start = max(0, int(start))
-    end = min(int(end), start + MAX_LINES, len(lines))
+    try:
+        start = max(0, int(start))
+    except (ValueError, TypeError):
+        return f"Error: start must be an integer, got {type(start).__name__}"
+
+    try:
+        end = max(0, int(end))
+    except (ValueError, TypeError):
+        return f"Error: end must be an integer, got {type(end).__name__}"
+
+    end = min(end, start + MAX_LINES, len(lines))
     return "\n".join(lines[start:end])
