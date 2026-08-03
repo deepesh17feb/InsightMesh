@@ -99,8 +99,17 @@ def answer(question: str) -> dict:
                     0.9,
                     trace_id,
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            # tracing.span already swallows its own exceptions internally, so this
+            # cannot break the fallback path below.
+            tracing.span(
+                trace_id,
+                "repo_agent_failed",
+                {"question": question},
+                {"error": f"{type(exc).__name__}: {exc}"},
+                metadata={"agent": "repo_agent", "why": "crew invocation failed, degraded to prefiltered chunks"},
+                run_mode="live_run",
+            )
 
     # Offline degradation: cite the prefiltered chunks directly, same as the rest of
     # the codebase does when no API key is configured or under pytest.

@@ -180,3 +180,38 @@ def test_repo_agent_exposes_exactly_the_two_read_only_tools():
     from atlys_agentic import agents
     tool_names = {getattr(t, "name", "") for t in agents.build_repo_agent().tools}
     assert tool_names == {"search_repo", "read_repo_file"}
+
+
+def test_crew_failure_is_logged_not_silently_swallowed(monkeypatch):
+    """A Crew().kickoff() failure must emit a tracing span, not vanish into a bare
+    `except Exception: pass`. Still degrades to the offline chunk digest afterwards."""
+    # Reach the LLM branch under pytest by monkeypatching the guard inputs directly,
+    # rather than removing the PYTEST_CURRENT_TEST check from the source.
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-for-test")
+
+    class _BoomCrew:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def kickoff(self):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(repo_qa, "Crew", _BoomCrew)
+    monkeypatch.setattr(repo_qa, "Task", lambda **kwargs: object())
+
+    recorded_spans = []
+    monkeypatch.setattr(
+        repo_qa.tracing,
+        "span",
+        lambda trace_id, name, input, output, **kwargs: recorded_spans.append((name, output)),
+    )
+
+    result = repo_qa.answer("how do I run the backend")
+
+    # Fallback contract still holds.
+    assert set(result) == _RESPONSE_KEYS
+    assert result["confidence"]["score"] == 0.6  # offline fallback, not the LLM-branch 0.9
+
+    # The failure was actually recorded, not swallowed.
+    assert any(name == "repo_agent_failed" for name, _ in recorded_spans)
