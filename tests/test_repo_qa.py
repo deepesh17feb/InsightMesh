@@ -246,3 +246,38 @@ def test_crew_failure_survives_a_broken_tracing_span(monkeypatch):
 
     assert set(result) == _RESPONSE_KEYS
     assert result["confidence"]["score"] == 0.6
+
+
+from atlys_agentic import prompts
+from atlys_agentic.flows import analysis_flow
+
+
+def test_classifier_prompt_documents_the_repo_knowledge_intent():
+    text = prompts.build_intent_classifier_system_prompt()
+    assert "repo_knowledge" in text
+    assert '"analytical" | "greeting" | "abusive" | "out_of_scope" | "repo_knowledge"' in text
+
+
+def test_heuristic_routes_system_questions_to_repo_knowledge():
+    for question in [
+        "how does the ingestion flow work?",
+        "what is CUJ 2?",
+        "where is the intent classifier implemented?",
+        "explain this repo's architecture",
+        "how do I run the backend?",
+    ]:
+        assert analysis_flow._heuristic_classify_intent(question)["intent"] == "repo_knowledge", question
+
+
+def test_heuristic_keeps_telemetry_questions_analytical():
+    for question in [
+        "why did express checkout conversion drop on iOS?",
+        "is there an OTP drop during verification?",
+        "show me the funnel breakdown by device_type",
+    ]:
+        assert analysis_flow._heuristic_classify_intent(question)["intent"] == "analytical", question
+
+
+def test_heuristic_still_classifies_greetings_and_abuse():
+    assert analysis_flow._heuristic_classify_intent("hello")["intent"] == "greeting"
+    assert analysis_flow._heuristic_classify_intent("you are stupid")["intent"] == "abusive"
