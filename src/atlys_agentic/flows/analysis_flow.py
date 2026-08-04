@@ -201,7 +201,7 @@ def _heuristic_classify_intent(question: str) -> dict:
         r"\b(system|repo|repository|codebase) architecture\b",
         r"\barchitecture of (this|the) (system|repo|repository|codebase)\b",
         r"\b(what is|explain|describe|tell me about|walk me through) (this|the|your) "
-        r"(system|repo|repository|codebase|methodology|pipeline|agent pipeline)\b",
+        r"(system|repo|repository|codebase|agent pipeline)\b",
         r"\bhow do you (diagnose|analyze|investigate)( a| an)?( drop| issue| problem)?\s*\??\s*$",
         r"\bhow does (this|the) (analyst|analytics agent|system) work\b",
         r"\bhow do i (run|start) (this|the) (backend|stack|app|api server|application)\b",
@@ -218,8 +218,8 @@ def _heuristic_classify_intent(question: str) -> dict:
     # unambiguous term (ddl, ingest), rather than a bare noun like "schema" or
     # "instrumentation" that also appears naturally in telemetry-diagnosis sentences.
     ingestion_patterns = [
-        r"\bingest\b",
-        r"\b(propose|design|create|generate|define|deploy)\b.{0,30}\b(schema|table|ddl)\b",
+        r"\bingest(ion|ing|ed)?\b",
+        r"\b(propose|design)\b.{0,30}\b(schema|table|ddl)\b",
         r"\bddl\b",
         r"\bpropose (a )?(table|schema)\b",
         r"\bcreate table\b",

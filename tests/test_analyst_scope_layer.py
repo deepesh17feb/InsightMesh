@@ -19,6 +19,7 @@ def test_repo_knowledge_context_embeds_all_four_docs_and_excludes_the_fifth():
     for expected_path in ("docs/CUJ2-simple.md", "README.md", "ARCHITECTURE.md", "RUN.md"):
         assert f"--- {expected_path} ---" in context, expected_path
     assert "Bundle Structure (Monorepo)" not in context  # atlys_tech_design.md-only heading
+    assert "unavailable]" not in context  # header presence alone can't detect a failed read
 
 
 def test_classifier_prompt_documents_all_six_intents():
@@ -51,6 +52,7 @@ def test_heuristic_routes_ingestion_questions_to_ingestion_redirect():
         "propose a schema for the new feature",
         "what's the DDL for the express checkout table?",
         "create table for group family applications",
+        "we need ingestion for a new feature",
     ]:
         assert analysis_flow._heuristic_classify_intent(question)["intent"] == "ingestion_redirect", question
 
@@ -73,6 +75,13 @@ def test_heuristic_does_not_steal_telemetry_questions_using_shared_vocabulary():
         "how do you diagnose a drop in express checkout conversion on iOS?",
         "what is the architecture of our conversion funnel?",
         "why is conversion dropping in this system?",
+        "create a chart from the sessions table",
+        "generate a report for the users table",
+        "define conversion for the checkout table",
+        "can you create a cut of the funnel table",
+        "deploy impact on the events table",
+        "explain the pipeline for express checkout conversion",
+        "describe the methodology behind the ios drop",
     ]:
         assert analysis_flow._heuristic_classify_intent(question)["intent"] == "analytical", question
 
