@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
 
     const backendUrl =
       process.env.INSIGHTMESH_BACKEND_URL ||
-      "https://insightmesh-backend-704907518971.us-east1.run.app";
+      "https://insightmesh-backend.onrender.com";
 
     const response = await fetch(`${backendUrl}/v1/chat/completions`, {
       method: "POST",
