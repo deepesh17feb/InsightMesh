@@ -192,31 +192,37 @@ def _heuristic_classify_intent(question: str) -> dict:
 
     # Questions about this system itself, as opposed to what the telemetry shows. Checked
     # after greeting/abuse/out-of-scope, before the ingestion and analytical checks. Not
-    # gated by has_analytical: "how do you diagnose a drop?" is a meta-question about the
-    # Analyst's process, not a request to actually run that diagnosis.
+    # gated by has_analytical, but each pattern requires the question be object-less or
+    # explicitly about the system/repo, so a concrete feature+dimension question ("how do
+    # you analyze the express checkout funnel by device?") stays analytical.
     repo_patterns = [
-        r"\bcuj\s*2\b",
-        r"\b(readme|architecture)\b",
-        r"\bthis (system|repo|repository|codebase)\b",
-        r"\bhow do you (diagnose|analyze|investigate|work)\b",
+        r"\bcuj\s*[12]\b",
+        r"\breadme\b",
+        r"\b(system|repo|repository|codebase) architecture\b",
+        r"\barchitecture of (this|the) (system|repo|repository|codebase)\b",
+        r"\b(what is|explain|describe|tell me about|walk me through) (this|the|your) "
+        r"(system|repo|repository|codebase|methodology|pipeline|agent pipeline)\b",
+        r"\bhow do you (diagnose|analyze|investigate)( a| an)?( drop| issue| problem)?\s*\??\s*$",
         r"\bhow does (this|the) (analyst|analytics agent|system) work\b",
-        r"\bhow do i run (this|the backend|the stack)\b",
+        r"\bhow do i (run|start) (this|the) (backend|stack|app|api server|application)\b",
         r"\bwhat is (this|the) (analytics agent|product analyst)\b",
+        r"\bwhat (can|does) (this tool|insightmesh|this system) do\b",
+        r"\bwhat models? does the analyst use\b",
     ]
     if any(re.search(p, q_lower) for p in repo_patterns):
         return {"intent": "repo_knowledge", "detected_spec": None, "response": None}
 
     # Ingestion / schema-design vocabulary — recognized specifically so the redirect is
     # friendly and accurate, not a generic out-of-scope refusal. Also not gated by
-    # has_analytical: a question can mention an analytical word and still be fundamentally
-    # about schema design ("propose a schema so we can measure the conversion drop").
+    # has_analytical, but each pattern requires an explicit design/creation verb or an
+    # unambiguous term (ddl, ingest), rather than a bare noun like "schema" or
+    # "instrumentation" that also appears naturally in telemetry-diagnosis sentences.
     ingestion_patterns = [
         r"\bingest\b",
-        r"\bschema\b",
+        r"\b(propose|design|create|generate|define|deploy)\b.{0,30}\b(schema|table|ddl)\b",
         r"\bddl\b",
         r"\bpropose (a )?(table|schema)\b",
         r"\bcreate table\b",
-        r"\binstrument(ation)?\b",
     ]
     if any(re.search(p, q_lower) for p in ingestion_patterns):
         return {"intent": "ingestion_redirect", "detected_spec": None, "response": None}
