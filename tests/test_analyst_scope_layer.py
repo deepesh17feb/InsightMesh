@@ -122,3 +122,25 @@ def test_greeting_abusive_and_out_of_scope_are_unaffected_by_the_refactor():
     assert analysis_flow.run(question="hello", spec_id="chat")["spec_id"] == "conversational"
     assert analysis_flow.run(question="you are stupid", spec_id="chat")["spec_id"] == "abusive_deescalation"
     assert analysis_flow.run(question="tell me a joke", spec_id="chat")["spec_id"] == "out_of_scope"
+
+
+import inspect
+
+
+def test_chat_synthesis_prompt_accepts_what_score_and_write_actually_passes():
+    params = inspect.signature(prompts.build_chat_synthesis_prompt).parameters
+    for required in ("question", "spec_id", "table_name", "known_issue", "cuts", "confidence"):
+        assert required in params, required
+
+
+def test_chat_synthesis_prompt_builds_without_raising():
+    text = prompts.build_chat_synthesis_prompt(
+        question="why did express checkout drop?",
+        spec_id="01_express_checkout",
+        table_name="express_checkout",
+        known_issue="K1: OTP autofill regression",
+        cuts={"device_type": []},
+        confidence={"score": 0.8, "rationale": "n=100"},
+    )
+    assert "express_checkout" in text
+    assert "K1" in text

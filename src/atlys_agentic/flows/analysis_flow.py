@@ -580,7 +580,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
         if api_key and not os.environ.get("PYTEST_CURRENT_TEST"):
             try:
                 import litellm
-                prompt = prompts.build_product_analyst_synthesis_prompt(
+                prompt = prompts.build_chat_synthesis_prompt(
                     question=self.state.question,
                     spec_id=self.state.spec_id,
                     table_name=self.state.table_name,

@@ -328,6 +328,37 @@ def build_instrumentation_followup_prompt(
     )
 
 
+def build_chat_synthesis_prompt(
+    question: str,
+    spec_id: str,
+    table_name: str,
+    known_issue: str,
+    cuts: dict,
+    confidence: dict,
+) -> str:
+    """Construct the Product Analyst synthesis prompt for the chat analytics path.
+
+    Distinct from `build_analytics_agent_synthesis_prompt`, which serves the full 12-phase
+    submission pipeline and requires phase outputs the chat path never computes. This builder
+    takes exactly what `_score_and_write` has on hand.
+    """
+    known_issue_line = (
+        f"Matched known issue: {known_issue}\n" if known_issue else "No known issue matched this cohort pattern.\n"
+    )
+    return (
+        "You are the Product Analyst at Atlys. Write a concise, PM-actionable diagnosis.\n\n"
+        f"Question: '{question}'\n"
+        f"Feature domain: {spec_id} (table: {table_name})\n"
+        f"{known_issue_line}"
+        f"Live segment cuts analysed: {list(cuts.keys())}\n"
+        f"Cut data: {cuts}\n"
+        f"Confidence: {confidence}\n\n"
+        "Write 3-5 sentences covering: the headline finding with its magnitude, where the "
+        "effect concentrates across the cuts, the likely mechanism, and the recommended next "
+        "step. Do not invent numbers that are not in the cut data."
+    )
+
+
 # Aliases for backward compatibility
 build_product_analyst_synthesis_prompt = build_analytics_agent_synthesis_prompt
 build_instrumentation_engineer_prompt = build_instrumentation_agent_prompt
