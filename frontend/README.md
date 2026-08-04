@@ -32,7 +32,7 @@ npx vercel
 2. Open [vercel.com/new](https://vercel.com/new) and import your repo.
 3. Set **Root Directory** to `frontend`.
 4. In **Environment Variables**, add:
-   * `INSIGHTMESH_BACKEND_URL`: `https://insightmesh-backend-704907518971.us-east1.run.app` (or your Render URL)
+   * `INSIGHTMESH_BACKEND_URL`: `https://insightmesh-backend.onrender.com`
 5. Click **Deploy**!
 
 ---
