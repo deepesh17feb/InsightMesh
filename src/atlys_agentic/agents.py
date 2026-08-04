@@ -326,41 +326,5 @@ spec packages and dispatch tasks cleanly to the Instrumentation Engineer or Prod
     )
 
 
-@tool("search_repo")
-def _search_repo_tool(query: str) -> list:
-    """Search this repository's documentation and source code for content relevant to a query."""
-    from atlys_agentic import tools_repo
-    return tools_repo.search_repo(query)
-
-
-@tool("read_repo_file")
-def _read_repo_file_tool(path: str, start: int = 0, end: int = 200) -> str:
-    """Read a bounded span of lines from a file inside this repository."""
-    from atlys_agentic import tools_repo
-    return tools_repo.read_repo_file(path, start=start, end=end)
-
-
-def build_repo_agent() -> Agent:
-    """Build the Repository Knowledge Analyst, which answers questions about this
-    system itself — its architecture, CUJs, setup, feature specs, and source."""
-    return Agent(
-        role="Atlys Repository Knowledge Analyst",
-        goal=(
-            "Answer questions about the InsightMesh system itself using its own "
-            "documentation and source code, citing every file used."
-        ),
-        backstory="""You are the resident expert on this codebase. You know its CUJ documents,
-its ClickHouse and chDB context layer, its CrewAI flows, and its Langfuse span contract. You
-answer strictly from what the repository actually says — you never speculate about behaviour
-you have not read, and you say so plainly when the repository does not cover something.""",
-        tools=[_search_repo_tool, _read_repo_file_tool],
-        llm=llm(),
-        memory=False,
-        verbose=True,
-        allow_delegation=False,
-        max_iter=5,
-    )
-
-
 
 
