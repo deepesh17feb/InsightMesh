@@ -644,6 +644,27 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
         tracing.flush()
 
 
+def _direct_response_dict(answer_md: str, summary: str, score: float, rationale: str, spec_id: str) -> dict:
+    """Build the standard analysis response dict for a canned, non-analytical answer.
+
+    Used by every guardrail branch in `run` (greeting, abusive, out_of_scope, repo_knowledge,
+    ingestion_redirect) so there is exactly one place this eleven-key shape is constructed.
+    """
+    return {
+        "answer_md": answer_md,
+        "executive_summary": summary,
+        "confidence": {"score": score, "rationale": rationale},
+        "known_issue_match": False,
+        "matched_known_issue": "",
+        "cuts": {},
+        "views": {"conversion_trend": [], "segment_waterfall": [], "metric_deltas": []},
+        "sql_queries": [],
+        "spec_id": spec_id,
+        "table_name": "none",
+        "trace_id": "",
+    }
+
+
 def run(
     question: str = "",
     spec_id: str = None,
@@ -677,49 +698,49 @@ def run(
         intent = decision.get("intent", "analytical")
         if intent == "greeting":
             greeting_md = decision.get("response") or prompts.GREETING_RESPONSE_MD
-            return {
-                "answer_md": greeting_md,
-                "executive_summary": "Atlys Product Analyst ready. Ask a question regarding feature funnels, conversion rates, or telemetry anomalies.",
-                "confidence": {"score": 1.0, "rationale": "Conversational greeting acknowledged."},
-                "known_issue_match": False,
-                "matched_known_issue": "",
-                "cuts": {},
-                "views": {"conversion_trend": [], "segment_waterfall": [], "metric_deltas": []},
-                "sql_queries": [],
-                "spec_id": "conversational",
-                "table_name": "none",
-                "trace_id": "",
-            }
+            return _direct_response_dict(
+                greeting_md,
+                "Atlys Product Analyst ready. Ask a question regarding feature funnels, conversion rates, or telemetry anomalies.",
+                1.0,
+                "Conversational greeting acknowledged.",
+                "conversational",
+            )
         elif intent == "abusive":
             abusive_md = decision.get("response") or prompts.ABUSIVE_RESPONSE_MD
-            return {
-                "answer_md": abusive_md,
-                "executive_summary": "Inappropriate or abusive query de-escalated respectfully.",
-                "confidence": {"score": 0.0, "rationale": "Community conduct standard applied."},
-                "known_issue_match": False,
-                "matched_known_issue": "",
-                "cuts": {},
-                "views": {"conversion_trend": [], "segment_waterfall": [], "metric_deltas": []},
-                "sql_queries": [],
-                "spec_id": "abusive_deescalation",
-                "table_name": "none",
-                "trace_id": "",
-            }
+            return _direct_response_dict(
+                abusive_md,
+                "Inappropriate or abusive query de-escalated respectfully.",
+                0.0,
+                "Community conduct standard applied.",
+                "abusive_deescalation",
+            )
         elif intent == "out_of_scope":
             out_of_scope_md = decision.get("response") or prompts.OUT_OF_SCOPE_RESPONSE_MD
-            return {
-                "answer_md": out_of_scope_md,
-                "executive_summary": "Query out of scope for Atlys product analytics.",
-                "confidence": {"score": 0.0, "rationale": "Query is outside the scope of product analytics."},
-                "known_issue_match": False,
-                "matched_known_issue": "",
-                "cuts": {},
-                "views": {"conversion_trend": [], "segment_waterfall": [], "metric_deltas": []},
-                "sql_queries": [],
-                "spec_id": "out_of_scope",
-                "table_name": "none",
-                "trace_id": "",
-            }
+            return _direct_response_dict(
+                out_of_scope_md,
+                "Query out of scope for Atlys product analytics.",
+                0.0,
+                "Query is outside the scope of product analytics.",
+                "out_of_scope",
+            )
+        elif intent == "repo_knowledge":
+            repo_md = decision.get("response") or prompts.REPO_KNOWLEDGE_FALLBACK_MD
+            return _direct_response_dict(
+                repo_md,
+                f"Answered '{question}' from Atlys Analytics system documentation.",
+                0.8,
+                "Answered from embedded system documentation, grounded in the repository's own docs.",
+                "repo_knowledge",
+            )
+        elif intent == "ingestion_redirect":
+            redirect_md = decision.get("response") or prompts.INGESTION_REDIRECT_RESPONSE_MD
+            return _direct_response_dict(
+                redirect_md,
+                "Ingestion request redirected to the Instrumentation Engineer.",
+                0.0,
+                "Ingestion and schema design are handled by a different model (atlys-instrumentation).",
+                "ingestion_redirect",
+            )
 
     flow = AnalysisFlow()
     flow.state.question = question

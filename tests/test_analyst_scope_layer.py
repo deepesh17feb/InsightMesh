@@ -85,3 +85,40 @@ def test_heuristic_catches_additional_realistic_system_questions():
         "how do i start the api server?",
     ]:
         assert analysis_flow._heuristic_classify_intent(question)["intent"] == "repo_knowledge", question
+
+
+_RESPONSE_KEYS = {
+    "answer_md", "executive_summary", "confidence", "known_issue_match",
+    "matched_known_issue", "cuts", "views", "sql_queries", "spec_id",
+    "table_name", "trace_id",
+}
+
+
+def test_run_routes_a_system_question_to_repo_knowledge():
+    result = analysis_flow.run(question="what is CUJ 2?", spec_id="chat")
+    assert result["spec_id"] == "repo_knowledge"
+    assert set(result) == _RESPONSE_KEYS
+
+
+def test_run_routes_an_ingestion_question_to_the_redirect():
+    result = analysis_flow.run(question="ingest a new spec", spec_id="chat")
+    assert result["spec_id"] == "ingestion_redirect"
+    assert "atlys-instrumentation" in result["answer_md"]
+    assert set(result) == _RESPONSE_KEYS
+
+
+def test_run_still_answers_telemetry_questions_analytically():
+    result = analysis_flow.run(question="why did express checkout conversion drop on iOS?", spec_id="chat")
+    assert result["spec_id"] not in ("repo_knowledge", "ingestion_redirect")
+
+
+def test_disabling_guardrails_disables_both_new_routes():
+    for question in ("what is CUJ 2?", "ingest a new spec"):
+        result = analysis_flow.run(question=question, spec_id="chat", enable_guardrails=False)
+        assert result["spec_id"] not in ("repo_knowledge", "ingestion_redirect")
+
+
+def test_greeting_abusive_and_out_of_scope_are_unaffected_by_the_refactor():
+    assert analysis_flow.run(question="hello", spec_id="chat")["spec_id"] == "conversational"
+    assert analysis_flow.run(question="you are stupid", spec_id="chat")["spec_id"] == "abusive_deescalation"
+    assert analysis_flow.run(question="tell me a joke", spec_id="chat")["spec_id"] == "out_of_scope"
