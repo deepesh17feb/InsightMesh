@@ -47,22 +47,6 @@ def format_span_name(name: str, run_mode: str | None = None) -> str:
     return f"{mode}::{name}"
 
 
-def init_litellm_callbacks() -> None:
-    """Initialize LiteLLM Langfuse callbacks so LLM calls from CrewAI / LiteLLM are tracked."""
-    try:
-        import litellm
-        if not hasattr(litellm, "success_callback") or litellm.success_callback is None:
-            litellm.success_callback = []
-        if not hasattr(litellm, "failure_callback") or litellm.failure_callback is None:
-            litellm.failure_callback = []
-        if "langfuse" not in litellm.success_callback:
-            litellm.success_callback.append("langfuse")
-        if "langfuse" not in litellm.failure_callback:
-            litellm.failure_callback.append("langfuse")
-    except Exception:
-        pass
-
-
 def client() -> Langfuse:
     """Return explicit Langfuse v4 client initialized from environment."""
     global _client
@@ -71,7 +55,6 @@ def client() -> Langfuse:
         sk = os.environ.get("LANGFUSE_SECRET_KEY")
         host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
         _client = Langfuse(public_key=pk, secret_key=sk, host=host)
-        init_litellm_callbacks()
     return _client
 
 
