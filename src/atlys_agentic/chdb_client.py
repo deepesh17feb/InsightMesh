@@ -2,7 +2,8 @@ import json
 import re
 import sqlite3
 import threading
-from pathlib import Path
+
+from atlys_agentic import paths
 
 _chdb_lock = threading.Lock()
 _chdb_session = None
@@ -18,8 +19,6 @@ def _get_chdb_session():
         except Exception:
             _chdb_session = None
     return _chdb_session
-
-from atlys_agentic import paths
 
 _SCHEMA_DDL = [
     """
@@ -106,6 +105,25 @@ def _sqlite_cosine_distance(a_val, b_val):
     return max(0.0, min(2.0, 1.0 - (dot / (norm_a * norm_b))))
 
 
+def _ch_types_to_sqlite(sql: str) -> str:
+    """Rewrite a ClickHouse CREATE TABLE into something SQLite will accept."""
+    sql = re.sub(r"\)\s*ENGINE\s*=.*$", ")", sql, flags=re.DOTALL | re.IGNORECASE)
+    for pattern, repl in (
+        (r"\bUInt\d+\b", "INTEGER"),
+        (r"\bInt\d+\b", "INTEGER"),
+        (r"\bFloat\d+\b", "REAL"),
+        (r"\bDateTime\b", "TEXT"),
+        (r"\bString\b", "TEXT"),
+        (r"\bLowCardinality\([^)]+\)", "TEXT"),
+        (r"\bNullable\([^)]+\)", "TEXT"),
+        (r"\bArray\([^)]+\)", "TEXT"),
+        (r"\bUUID\b", "TEXT"),
+        (r"\btable\s+TEXT\b", '"table" TEXT'),
+    ):
+        sql = re.sub(pattern, repl, sql, flags=re.IGNORECASE)
+    return sql
+
+
 def _get_sqlite_conn():
     paths.CHDB_PATH.mkdir(parents=True, exist_ok=True)
     db_file = paths.CHDB_PATH / "metadata.sqlite"
@@ -116,19 +134,8 @@ def _get_sqlite_conn():
     with conn:
         cursor = conn.cursor()
         for ddl in _SCHEMA_DDL:
-            clean = re.sub(r"\)\s*ENGINE\s*=.*$", ")", ddl, flags=re.DOTALL | re.IGNORECASE)
-            clean = re.sub(r"\bUInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
-            clean = re.sub(r"\bInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
-            clean = re.sub(r"\bFloat\d+\b", "REAL", clean, flags=re.IGNORECASE)
-            clean = re.sub(r"\bDateTime\b", "TEXT", clean, flags=re.IGNORECASE)
-            clean = re.sub(r"\bString\b", "TEXT", clean, flags=re.IGNORECASE)
-            clean = re.sub(r"\bLowCardinality\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
-            clean = re.sub(r"\bNullable\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
-            clean = re.sub(r"\bArray\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
-            clean = re.sub(r"\bUUID\b", "TEXT", clean, flags=re.IGNORECASE)
-            clean = re.sub(r"\btable\s+TEXT\b", '"table" TEXT', clean, flags=re.IGNORECASE)
             try:
-                cursor.execute(clean)
+                cursor.execute(_ch_types_to_sqlite(ddl))
             except Exception:
                 pass
         # Ensure finding_key column is present if insights table already existed
@@ -148,17 +155,7 @@ def _run_sqlite_fallback(sql: str, fmt: str = "JSON"):
     if clean.strip().upper() == "SHOW TABLES":
         clean = "SELECT name, name AS table_name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
     elif clean.strip().upper().startswith("CREATE TABLE"):
-        clean = re.sub(r"\)\s*ENGINE\s*=.*$", ")", clean, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r"\bUInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
-        clean = re.sub(r"\bInt\d+\b", "INTEGER", clean, flags=re.IGNORECASE)
-        clean = re.sub(r"\bFloat\d+\b", "REAL", clean, flags=re.IGNORECASE)
-        clean = re.sub(r"\bDateTime\b", "TEXT", clean, flags=re.IGNORECASE)
-        clean = re.sub(r"\bString\b", "TEXT", clean, flags=re.IGNORECASE)
-        clean = re.sub(r"\bLowCardinality\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
-        clean = re.sub(r"\bNullable\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
-        clean = re.sub(r"\bArray\([^)]+\)", "TEXT", clean, flags=re.IGNORECASE)
-        clean = re.sub(r"\bUUID\b", "TEXT", clean, flags=re.IGNORECASE)
-        clean = re.sub(r"\btable\s+TEXT\b", '"table" TEXT', clean, flags=re.IGNORECASE)
+        clean = _ch_types_to_sqlite(clean)
 
     clean = re.sub(r"^\s*TRUNCATE\s+TABLE\s+(\w+)", r"DELETE FROM \1", clean, flags=re.IGNORECASE)
     clean = re.sub(r"\bnow\(\)", "datetime('now')", clean, flags=re.IGNORECASE)
@@ -199,50 +196,6 @@ def run(sql: str, fmt: str = "JSON"):
 def init_schema() -> None:
     for ddl in _SCHEMA_DDL:
         run(ddl, fmt="CSV")
-
-
-def reset_chdb() -> None:
-    """Reset all chDB metadata tables for clean state isolation."""
-    init_schema()
-    for table_name in ("business_context", "schema_registry", "context_changelog", "insights", "table_semantics"):
-        try:
-            run(f"TRUNCATE TABLE {table_name}", fmt="CSV")
-        except Exception:
-            pass
-
-
-def seed_existing_tables_metadata(ddl_sql_path: Path = None) -> int:
-    """Parse foundation tables from ddl.sql and register them into schema_registry."""
-    init_schema()
-    target_path = ddl_sql_path or paths.DDL_SQL
-    if not target_path or not target_path.exists():
-        return 0
-
-    content = target_path.read_text(encoding="utf-8")
-    table_blocks = re.findall(
-        r"(CREATE TABLE\s+([a-zA-Z0-9_]+)\s*\((.*?)\)\s*ENGINE\s*=\s*MergeTree.*?;)",
-        content,
-        re.DOTALL | re.IGNORECASE,
-    )
-
-    seeded = 0
-    for ddl_full, table_name, body in table_blocks:
-        existing = run(f'SELECT "table" FROM schema_registry WHERE "table" = \'{table_name}\'')
-        if not existing:
-            cols = []
-            for line in body.splitlines():
-                line_s = line.strip().rstrip(",")
-                if line_s and not line_s.startswith("--"):
-                    cols.append(line_s.split()[0])
-            columns_json = json.dumps(cols).replace("'", "''")
-            ddl_escaped = ddl_full.strip().replace("'", "''")
-            run(
-                f"""INSERT INTO schema_registry VALUES
-                ('{table_name}', '{ddl_escaped}', '{columns_json}', '00_foundation_tables', 1, now())""",
-                fmt="CSV",
-            )
-            seeded += 1
-    return seeded
 
 
 def init_base_context() -> int:

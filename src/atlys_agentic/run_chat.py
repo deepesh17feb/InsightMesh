@@ -9,36 +9,9 @@ import json
 import time
 import uuid
 
-try:
-    from fastapi import FastAPI
-    from fastapi.responses import JSONResponse, StreamingResponse
-    from pydantic import BaseModel, Field
-except ImportError:  # pragma: no cover
-    class StreamingResponse:  # type: ignore
-        def __init__(self, generator=None, media_type: str = "text/event-stream"):
-            self.generator = generator
-            self.media_type = media_type
-
-    class JSONResponse:  # type: ignore
-        def __init__(self, content=None, status_code: int = 200):
-            self.content = content
-            self.status_code = status_code
-
-    class FastAPI:  # type: ignore
-        def __init__(self, title: str = ""):
-            self.title = title
-
-        def post(self, path: str):
-            def decorator(fn):
-                return fn
-            return decorator
-
-        def get(self, path: str, response_class=None):
-            def decorator(fn):
-                return fn
-            return decorator
-
-    from pydantic import BaseModel, Field
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from atlys_agentic import chdb_client, conversational_ingestion, paths, prompts, tools, tracing
 from atlys_agentic.flows import analysis_flow, ingestion_flow

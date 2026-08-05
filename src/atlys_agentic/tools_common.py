@@ -6,7 +6,7 @@ import math
 import os
 import re
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -213,6 +213,27 @@ def Tool_Score_Confidence(
     }
 
 
+def Tool_Emit_Viz() -> dict:
+    """Emit schema history, insights, and context changelog snapshots."""
+    schema_history = chdb_client.run(
+        'SELECT "table", version, spec_id, created_at FROM schema_registry ORDER BY created_at DESC'
+    )
+    insights = chdb_client.run(
+        "SELECT finding_key, spec_id, question, confidence, created_at FROM insights ORDER BY created_at DESC"
+    )
+    context_changelog = chdb_client.run(
+        "SELECT ts, change_type, agent, trace_id FROM context_changelog ORDER BY ts DESC"
+    )
+    result = {
+        "schema_history": schema_history,
+        "insights": insights,
+        "context_changelog": context_changelog,
+    }
+    paths.OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    (paths.OUTPUTS_DIR / "viz_snapshot.json").write_text(json.dumps(result, indent=2, default=str))
+    return result
+
+
 def Tool_Validate_Invariants(ddl: str) -> list[str]:
     """Validate ClickHouse 4 critical storage invariants."""
     violations = []
@@ -241,24 +262,3 @@ def Tool_Validate_Invariants(ddl: str) -> list[str]:
         violations.append("Violation: TTL clause is missing.")
 
     return violations
-
-
-def Tool_Emit_Viz() -> dict:
-    """Emit schema history, insights, and context changelog snapshots."""
-    schema_history = chdb_client.run(
-        'SELECT "table", version, spec_id, created_at FROM schema_registry ORDER BY created_at DESC'
-    )
-    insights = chdb_client.run(
-        "SELECT finding_key, spec_id, question, confidence, created_at FROM insights ORDER BY created_at DESC"
-    )
-    context_changelog = chdb_client.run(
-        "SELECT ts, change_type, agent, trace_id FROM context_changelog ORDER BY ts DESC"
-    )
-    result = {
-        "schema_history": schema_history,
-        "insights": insights,
-        "context_changelog": context_changelog,
-    }
-    paths.OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
-    (paths.OUTPUTS_DIR / "viz_snapshot.json").write_text(json.dumps(result, indent=2, default=str))
-    return result

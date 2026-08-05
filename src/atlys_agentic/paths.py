@@ -9,18 +9,11 @@ BASE_CONTEXT_MD = PROBLEM_STATEMENT_DIR / "base_context.md"
 DDL_SQL = DATA_DIR / "ddl.sql"
 LOAD_SH = DATA_DIR / "load.sh"
 
-ATLYS_AGENTIC_DIR = Path(__file__).resolve().parent
 CHDB_PATH = ATLYS_AGENTIC_DIR / "chdb_data"
 OUTPUTS_DIR = ATLYS_AGENTIC_DIR / "outputs"
-SCHEMAS_DIR = OUTPUTS_DIR / "schemas"
-INSIGHTS_DIR = OUTPUTS_DIR / "insights"
-TRACES_DIR = OUTPUTS_DIR / "traces"
-SUBMISSION_DIR = ATLYS_AGENTIC_DIR / "submission"
-UNSEEN_SPECS_DIR = ATLYS_AGENTIC_DIR / "specs" / "06_unseen"
 AGENTS_CONFIG_YAML = ATLYS_AGENTIC_DIR / "config" / "agents.yaml"
 
-for _d in (OUTPUTS_DIR, SCHEMAS_DIR, INSIGHTS_DIR, TRACES_DIR, SUBMISSION_DIR, UNSEEN_SPECS_DIR):
-    _d.mkdir(parents=True, exist_ok=True)
+OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def spec_dir(spec_id: str) -> Path:
@@ -66,21 +59,7 @@ def available_spec_ids() -> list[str]:
                     if item.name not in seen:
                         seen.add(item.name)
                         specs.append(item.name)
-    return specs or ["01_express_checkout", "02_group_family", "03_status_sharing", "04_abandoned_checkout_recovery", "05_instant_forex"]
-
-
-
-def normalize_spec_id(spec_id: str) -> str:
-    if not spec_id:
-        return "01_express_checkout"
-    for sid in available_spec_ids():
-        if spec_id == sid:
-            return sid
-        clean_spec = spec_id.replace("spec_", "").replace("0", "").strip("_")
-        clean_sid = sid.replace("0", "").strip("_")
-        if spec_id in sid or clean_spec in clean_sid:
-            return sid
-    return spec_id
+    return specs
 
 
 def parse_ddl_tables(ddl_path: Path | None = None) -> dict[str, dict]:

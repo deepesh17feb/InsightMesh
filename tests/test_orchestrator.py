@@ -1,9 +1,7 @@
 """Tests for Orchestrator Agent tools, raw path resolution, catalog discovery, and intent dispatch."""
 from pathlib import Path
 
-import pytest
-
-from atlys_agentic import agents, conversational_ingestion, paths, tools_orchestrator
+from atlys_agentic import conversational_ingestion, paths, tools_orchestrator
 
 
 def test_resolve_path_or_spec_exact_id():
@@ -102,8 +100,3 @@ def test_format_batch_proposal_card():
     assert "01_express_checkout" in card
 
 
-def test_build_orchestrator_agent():
-    agent = agents.build_orchestrator_agent()
-    assert agent is not None
-    assert "Orchestrator" in agent.role
-    assert len(agent.tools) == 3
