@@ -1,11 +1,10 @@
 """Memory-free CrewAI agent personas.
 
 Every context an agent needs is passed in explicitly via task input or fetched
-at call time through a tool, never recalled from opaque agent memory (see
-final_wiby.md §2, the "no hidden LLM memory" principle). That guarantee is
-enforced by the deterministic flows in flows/ — no Crew is ever kicked off, so
-there is no agent loop to accumulate memory. memory=False below is belt-and-
-braces for the day one is.
+at call time through a tool, never recalled from opaque agent memory. That
+guarantee is enforced by the deterministic flows in flows/ — no Crew is ever
+kicked off, so there is no agent loop to accumulate memory. memory=False below
+is belt-and-braces for the day one is.
 """
 import os
 from pathlib import Path

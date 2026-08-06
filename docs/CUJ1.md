@@ -1,6 +1,6 @@
 # CUJ 1 — Instrumentation Agent (LOCKED DESIGN)
 
-**Status:** locked. Supersedes the CUJ 1 sections of `cuj_architecture.md` and `cuj_architecture_v2.md`.
+**Status:** locked. Authoritative CUJ 1 design.
 **Surface:** LibreChat only. Every output a human sees is printed as chat markdown.
 **Branch:** targets `refactor/cuj-deterministic-pipeline`.
 
@@ -663,8 +663,7 @@ the submission package; chat is the surface a human actually reads.
 
 ## 11. Not covered here
 
-- **CUJ 2** (Analytics Agent) — see `cuj_architecture_v2.md` § 4 and the CUJ 2 orchestration
-  blueprint. The bounded drill-down design is not yet locked.
+- **CUJ 2** (Analytics Agent) — see `docs/CUJ2.md`. The bounded drill-down design is not yet locked.
 - **Foundation table loading.** The 8 existing tables load from parquet via
   `problem statment/data/load.sh`. Those parquet files are currently Git LFS pointers that
   404 on the server, so `bootstrap_existing_tables()` cannot run. This does not block
