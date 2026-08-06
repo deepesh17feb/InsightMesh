@@ -1,6 +1,6 @@
 # CUJ 2 — Analytics Agent (LOCKED DESIGN)
 
-**Status:** locked for hackathon MVP. Supersedes the CUJ 2 sections of `cuj_architecture.md` and `cuj_architecture_v2.md`.
+**Status:** locked for hackathon MVP. Authoritative CUJ 2 design.
 **Surface:** LibreChat only. Every output a human sees is printed as chat markdown.
 **Scope:** hackathon MVP — meets the Analytics Agent acceptance criteria. Production concerns are listed in § 11 as extended goals, not built.
 **Branch:** targets `refactor/cuj-deterministic-pipeline`.

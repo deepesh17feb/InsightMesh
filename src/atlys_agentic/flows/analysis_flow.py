@@ -1,41 +1,9 @@
 import os
-from typing import Generic, TypeVar
-
 from pydantic import BaseModel
 
+from crewai.flow.flow import Flow as CrewAIFlow, listen, router, start
+
 from atlys_agentic import agents, chdb_client, prompts, tools, tracing
-
-T = TypeVar("T")
-
-try:
-    from crewai.flow.flow import Flow as CrewAIFlow, listen, router, start
-except ImportError:  # pragma: no cover
-    def start():
-        def decorator(fn):
-            fn._flow_step = "start"
-            return fn
-        return decorator
-
-    def listen(target=None):
-        def decorator(fn):
-            fn._flow_step = "listen"
-            fn._listen_target = target
-            return fn
-        return decorator
-
-    def router(target=None):
-        def decorator(fn):
-            fn._flow_step = "router"
-            fn._router_target = target
-            return fn
-        return decorator
-
-    class CrewAIFlow(Generic[T]):  # type: ignore
-        def __init__(self):
-            self.state = None
-
-        def kickoff(self, inputs: dict = None):
-            pass
 
 
 _MANDATORY_CUT_DIMENSIONS = ("device_type", "geoip_country_code", "destination")
@@ -321,22 +289,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
             {"rows": len(self.state.context_rows), "agent": context_librarian.role},
         )
 
-    @router(jit_context_retrieval)
-    def route_analysis_intent(self):
-        """LLM Router: Evaluates question & retrieved context directly after start."""
-        question_words = {w.strip("?.,!()\"'").lower() for w in self.state.question.split()}
-        for row in self.state.context_rows:
-            def_text = f"{row.get('key', '')} {row.get('definition', '')}".lower()
-            def_words = {w.strip("?.,!()\"'") for w in def_text.split()}
-            overlap = (question_words & def_words) - _STOPWORDS
-            if len(overlap) >= 2 or any(k in question_words for k in ["k1", "k2", "k3", "k4", "k5", "k6", "k7"]):
-                self.state.known_issue_match = True
-                self.state.matched_known_issue = f"{row.get('key', 'Known Issue')}: {row.get('definition', '')}"
-                return "known_issue"
-        return "no_known_issue"
-
-    @listen("known_issue")
-    @listen("no_known_issue")
+    @listen(jit_context_retrieval)
     def run_multi_cut_analysis(self):
         from atlys_agentic import paths
         ndjson_path = paths.events_ndjson(self.state.spec_id)
@@ -704,6 +657,9 @@ def run(
         input={"question": question, "spec_id": flow.state.spec_id, "table_name": flow.state.table_name},
         run_mode=mode,
     ):
+        # ponytail: steps are called by hand rather than flow.kickoff(). The @start/@listen/
+        # @router graph above declares this exact same linear chain, so switching to kickoff()
+        # is a one-line change if the deterministic ordering ever needs to become agentic.
         flow.jit_context_retrieval()
         flow.run_multi_cut_analysis()
         branch = flow.route_known_issue()

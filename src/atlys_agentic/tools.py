@@ -7,7 +7,7 @@ Aggregates and re-exports tools segregated by CUJ:
 """
 from __future__ import annotations
 
-from atlys_agentic import ch_client, chdb_client, clickhouse_mcp, paths
+from atlys_agentic import ch_client, chdb_client, paths
 
 # 1. Common / Shared Tools & Models
 from atlys_agentic.tools_common import (
@@ -28,39 +28,24 @@ from atlys_agentic.tools_common import (
 
 # 2. CUJ 1: Instrumentation Agent & Schema Ingestion Tools
 from atlys_agentic.tools_cuj1 import (
-    Tool_Build_Context_Package,
     Tool_Consult_Internal_Tables,
     Tool_Context_Diff,
     Tool_Context_Upsert,
-    Tool_Decide_Strategy,
-    Tool_Emit_Submission_Artifacts,
     Tool_Execute_DDL,
     Tool_Explain_Schema_Rationale,
     Tool_Generate_MV,
     Tool_Infer_Schema,
     Tool_Infer_Table_Name,
     Tool_Load_Events,
-    Tool_Refresh_CHDB_From_Live,
+    Tool_Emit_Submission_Artifacts,
     Tool_Write_Table_Semantics,
 )
 
 # 3. CUJ 2: Analytics Agent & Telemetry Diagnostics Tools
 from atlys_agentic.tools_cuj2 import (
-    BASE_TABLE_SEMANTICS,
     Tool_Analytics_Compute,
     Tool_Bootstrap_Base_Semantics,
-    Tool_Check_Queries,
-    Tool_Derive_Signals,
-    Tool_Emit_CUJ2_Submission_Artifacts,
-    Tool_Live_Probe,
     Tool_Load_Table_Semantics,
-    Tool_Match_Known_Issue,
-    Tool_Persist_Insight_CUJ2,
-    Tool_Plan_Queries,
-    Tool_Resolve_And_Answerability,
-    Tool_Result_Audit,
-    Tool_Semantic_Retrieval,
-    Tool_Synthesize_Insight,
 )
 
 # 4. Orchestrator Tools
@@ -98,26 +83,13 @@ __all__ = [
     "Tool_Execute_DDL",
     "Tool_Context_Diff",
     "Tool_Context_Upsert",
-    "Tool_Refresh_CHDB_From_Live",
-    "Tool_Build_Context_Package",
-    "Tool_Decide_Strategy",
-    "Tool_Load_Events",
     "Tool_Write_Table_Semantics",
+    "Tool_Load_Events",
     "Tool_Emit_Submission_Artifacts",
     # CUJ 2
     "Tool_Analytics_Compute",
-    "Tool_Semantic_Retrieval",
+    "Tool_Bootstrap_Base_Semantics",
     "Tool_Load_Table_Semantics",
-    "Tool_Live_Probe",
-    "Tool_Resolve_And_Answerability",
-    "Tool_Match_Known_Issue",
-    "Tool_Plan_Queries",
-    "Tool_Check_Queries",
-    "Tool_Result_Audit",
-    "Tool_Derive_Signals",
-    "Tool_Synthesize_Insight",
-    "Tool_Persist_Insight_CUJ2",
-    "Tool_Emit_CUJ2_Submission_Artifacts",
     # Orchestrator
     "Tool_Resolve_Path_Or_Spec",
     "Tool_Discover_Workspace_Paths",

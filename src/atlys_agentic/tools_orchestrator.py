@@ -13,6 +13,28 @@ from typing import Any
 from atlys_agentic import chdb_client, paths, tools
 
 
+def _resolved(spec_id: str, spec_dir: Path, resolved_from: str) -> dict[str, Any]:
+    """Shape one successful resolution result."""
+    spec_md_file = spec_dir / "spec.md"
+    events_file = spec_dir / "events.ndjson"
+    spec_text = spec_md_file.read_text(encoding="utf-8") if spec_md_file.exists() else ""
+    return {
+        "found": True,
+        "spec_id": spec_id,
+        "spec_dir": str(spec_dir.resolve()),
+        "table_name": tools.Tool_Infer_Table_Name(spec_id, spec_text),
+        "has_spec_md": spec_md_file.exists(),
+        "has_events_ndjson": events_file.exists(),
+        "spec_md_path": str(spec_md_file) if spec_md_file.exists() else None,
+        "events_ndjson_path": str(events_file) if events_file.exists() else None,
+        "resolved_from": resolved_from,
+    }
+
+
+def _unresolved(error: str) -> dict[str, Any]:
+    return {"found": False, "error": error, "spec_id": "", "spec_dir": "", "table_name": ""}
+
+
 def Tool_Resolve_Path_Or_Spec(input_str: str) -> dict[str, Any]:
     """Resolve any user-provided string (directory path, file path, spec slug, or ID)
     into a validated filesystem spec package.
@@ -25,13 +47,7 @@ def Tool_Resolve_Path_Or_Spec(input_str: str) -> dict[str, Any]:
     """
     raw = (input_str or "").strip().strip("\"'").rstrip("/")
     if not raw:
-        return {
-            "found": False,
-            "error": "No path or spec identifier provided.",
-            "spec_id": "",
-            "spec_dir": "",
-            "table_name": "",
-        }
+        return _unresolved("No path or spec identifier provided.")
 
     # 1. Strip common prefixes like 'ingest ', 'spec ', 'path '
     cleaned = raw
@@ -67,20 +83,7 @@ def Tool_Resolve_Path_Or_Spec(input_str: str) -> dict[str, Any]:
         spec_md_file = cand_dir / "spec.md"
         events_file = cand_dir / "events.ndjson"
         if cand_dir.exists() and (spec_md_file.exists() or events_file.exists()):
-            spec_id = cand_dir.name
-            spec_text = spec_md_file.read_text(encoding="utf-8") if spec_md_file.exists() else ""
-            table_name = tools.Tool_Infer_Table_Name(spec_id, spec_text)
-            return {
-                "found": True,
-                "spec_id": spec_id,
-                "spec_dir": str(cand_dir.resolve()),
-                "table_name": table_name,
-                "has_spec_md": spec_md_file.exists(),
-                "has_events_ndjson": events_file.exists(),
-                "spec_md_path": str(spec_md_file) if spec_md_file.exists() else None,
-                "events_ndjson_path": str(events_file) if events_file.exists() else None,
-                "resolved_from": "direct_filesystem_path",
-            }
+            return _resolved(cand_dir.name, cand_dir, "direct_filesystem_path")
 
     # 3. Fuzzy matching against available spec directories
     available = paths.available_spec_ids()
@@ -88,22 +91,7 @@ def Tool_Resolve_Path_Or_Spec(input_str: str) -> dict[str, Any]:
 
     # Exact match on spec_id
     if cleaned in available:
-        spec_dir = paths.spec_dir(cleaned)
-        spec_md_file = spec_dir / "spec.md"
-        events_file = spec_dir / "events.ndjson"
-        spec_text = spec_md_file.read_text(encoding="utf-8") if spec_md_file.exists() else ""
-        table_name = tools.Tool_Infer_Table_Name(cleaned, spec_text)
-        return {
-            "found": True,
-            "spec_id": cleaned,
-            "spec_dir": str(spec_dir.resolve()),
-            "table_name": table_name,
-            "has_spec_md": spec_md_file.exists(),
-            "has_events_ndjson": events_file.exists(),
-            "spec_md_path": str(spec_md_file) if spec_md_file.exists() else None,
-            "events_ndjson_path": str(events_file) if events_file.exists() else None,
-            "resolved_from": "exact_spec_id",
-        }
+        return _resolved(cleaned, paths.spec_dir(cleaned), "exact_spec_id")
 
     # Match substrings or number/slug combinations
     for spec in available:
@@ -118,30 +106,9 @@ def Tool_Resolve_Path_Or_Spec(input_str: str) -> dict[str, Any]:
             or f"spec_{spec_num}" in cleaned_lower
             or (cleaned_lower.isdigit() and int(cleaned_lower) == int(spec_num))
         ):
-            spec_dir = paths.spec_dir(spec)
-            spec_md_file = spec_dir / "spec.md"
-            events_file = spec_dir / "events.ndjson"
-            spec_text = spec_md_file.read_text(encoding="utf-8") if spec_md_file.exists() else ""
-            table_name = tools.Tool_Infer_Table_Name(spec, spec_text)
-            return {
-                "found": True,
-                "spec_id": spec,
-                "spec_dir": str(spec_dir.resolve()),
-                "table_name": table_name,
-                "has_spec_md": spec_md_file.exists(),
-                "has_events_ndjson": events_file.exists(),
-                "spec_md_path": str(spec_md_file) if spec_md_file.exists() else None,
-                "events_ndjson_path": str(events_file) if events_file.exists() else None,
-                "resolved_from": "fuzzy_match",
-            }
+            return _resolved(spec, paths.spec_dir(spec), "fuzzy_match")
 
-    return {
-        "found": False,
-        "error": f"Could not resolve '{input_str}' to any known spec directory or path.",
-        "spec_id": "",
-        "spec_dir": "",
-        "table_name": "",
-    }
+    return _unresolved(f"Could not resolve '{input_str}' to any known spec directory or path.")
 
 
 def Tool_Discover_Workspace_Paths(root_dir: str | None = None) -> list[dict[str, Any]]:

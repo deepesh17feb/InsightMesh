@@ -1,41 +1,11 @@
 import os
-from typing import Callable, Generic, TypeVar
+from typing import Callable
 
 from pydantic import BaseModel
 
+from crewai.flow.flow import Flow as CrewAIFlow, listen, router, start
+
 from atlys_agentic import agents, paths, prompts, tools, tracing
-
-T = TypeVar("T")
-
-try:
-    from crewai.flow.flow import Flow as CrewAIFlow, listen, router, start
-except ImportError:  # pragma: no cover
-    def start():
-        def decorator(fn):
-            fn._flow_step = "start"
-            return fn
-        return decorator
-
-    def listen(target=None):
-        def decorator(fn):
-            fn._flow_step = "listen"
-            fn._listen_target = target
-            return fn
-        return decorator
-
-    def router(target=None):
-        def decorator(fn):
-            fn._flow_step = "router"
-            fn._router_target = target
-            return fn
-        return decorator
-
-    class CrewAIFlow(Generic[T]):  # type: ignore
-        def __init__(self):
-            self.state = None
-
-        def kickoff(self, inputs: dict = None):
-            pass
 
 
 class IngestionState(BaseModel):
@@ -50,6 +20,10 @@ class IngestionState(BaseModel):
     diff_result: dict = {}
     table_consultation: dict = {}
     reasoning: dict = {}
+    violations: list[str] = []
+    load_result: dict = {}
+    receipt_md: str = ""
+    artifacts: list[str] = []
 
 
 class IngestionFlow(CrewAIFlow[IngestionState]):
@@ -124,6 +98,8 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
         # 2. Instrumentation Engineer infers production ClickHouse DDL & Materialized View using Context Librarian's catalog briefing
         self.state.ddl = tools.Tool_Infer_Schema(ndjson_path, spec_text, self.state.table_name)
         self.state.mv_ddl = tools.Tool_Generate_MV(self.state.table_name, self.state.ddl)
+        # 6-pillar gate: ORDER BY / PARTITION BY / TTL / no id-first key.
+        self.state.violations = tools.Tool_Validate_Invariants(self.state.ddl)
 
         # 3. Grounded consultation with full inferred column set
         cols = tools._columns_from_ddl(self.state.ddl)
@@ -330,8 +306,37 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
             f"  • Metric Conflicts Detected: {', '.join(conflicts) if conflicts else 'None'}",
             f"  • Undocumented Gaps Flagged: {', '.join(gaps) if gaps else 'None'}",
             "=" * 80,
+            "",
+            # Machine-readable handle so the LibreChat HITL turn can recover
+            # spec/table/trace from history — parsed by PROPOSAL_TOKEN_REGEX.
+            f"<!-- atlys:proposal spec_id={self.state.spec_id} table={self.state.table_name}"
+            f" trace={self.state.trace_id} -->",
         ])
         return "\n".join(summary_lines)
+
+    def build_receipt(self) -> str:
+        """Deployment receipt returned to the operator after an approved DDL execution."""
+        consult = self.state.table_consultation or {}
+        reasoning = self.state.reasoning or {}
+        loaded = (self.state.load_result or {}).get("rows_loaded", 0)
+        return "\n".join([
+            f"### ✅ Deployed `{self.state.table_name}` to ClickHouse Cloud",
+            "",
+            f"- **Spec:** `{self.state.spec_id}`",
+            f"- **Strategy:** {consult.get('strategy', 'CREATE_NEW')}",
+            f"- **DDL status:** {(self.state.ddl_result or {}).get('status', 'unknown')}",
+            f"- **Rows loaded:** {loaded:,}",
+            f"- **Invariant violations:** {', '.join(self.state.violations) if self.state.violations else 'None'}",
+            "",
+            "#### Reasoning chain",
+            reasoning.get("high_level_summary", "") or "Schema designed from spec + event sample.",
+            "",
+            "#### Artifacts",
+            f"`outputs/submission/{self.state.spec_id}/` — "
+            + (", ".join(sorted(self.state.artifacts)) if self.state.artifacts else "none emitted"),
+            "",
+            f"🔍 Trace: https://us.cloud.langfuse.com/trace/{self.state.trace_id}",
+        ])
 
     @listen(context_step)
     def human_gate(self):
@@ -510,6 +515,11 @@ class ProposalResult(BaseModel):
     ddl: str = ""
     mv_ddl: str = ""
     proposal_md: str = ""
+    strategy: str = ""
+    violations: list[str] = []
+    diff_result: dict = {}
+    trace_id: str = ""
+    trace_url: str = ""
     state: IngestionState | None = None
 
 
@@ -539,6 +549,71 @@ def generate_proposal(
         ddl=flow.state.ddl,
         mv_ddl=flow.state.mv_ddl,
         proposal_md=summary,
+        strategy=(flow.state.table_consultation or {}).get("strategy", "CREATE_NEW"),
+        violations=flow.state.violations,
+        diff_result=flow.state.diff_result,
+        trace_id=flow.state.trace_id,
+        trace_url=tracing.trace_url() or "",
         state=flow.state,
     )
+
+
+def deploy_approved_proposal(
+    spec_id: str,
+    table_name: str | None = None,
+    trace_id: str = "",
+    dry_run: bool = False,
+) -> IngestionState:
+    """Execute an operator-approved proposal: run the DDL, load the events, sync
+    chDB context, and emit submission artifacts. Re-derives the schema from the
+    spec rather than trusting DDL round-tripped through the chat transcript."""
+    flow = IngestionFlow()
+    flow.state.spec_id = spec_id
+    flow.state.table_name = table_name or ""
+    flow.state.dry_run = dry_run
+
+    mode = "dry_run" if dry_run else "live_run"
+    with tracing.trace(
+        f"clickathon-{mode}-deploy-{spec_id}",
+        input={"spec_id": spec_id, "table_name": table_name, "dry_run": dry_run},
+        run_mode=mode,
+    ):
+        flow.infer_schema()
+        flow.dry_run_audit()
+        if trace_id:
+            flow.state.trace_id = trace_id
+        flow.state.approved = True
+
+        if not dry_run:
+            flow.execute_and_audit()
+            flow.state.load_result = tools.Tool_Load_Events(
+                spec_id=flow.state.spec_id, table_name=flow.state.table_name
+            )
+        else:
+            # ponytail: dry run stops short of ClickHouse writes; everything else
+            # (schema, diff, receipt, artifacts) is exercised for real.
+            flow.state.load_result = {"rows_loaded": 0, "dry_run": True}
+
+        flow.state.artifacts = sorted(
+            tools.Tool_Emit_Submission_Artifacts(
+                spec_id=flow.state.spec_id,
+                table_name=flow.state.table_name,
+                ddl=flow.state.ddl,
+                mv_ddl=flow.state.mv_ddl,
+                run_report_md=flow.format_proposal_summary(),
+                run_report_json={
+                    "spec_id": flow.state.spec_id,
+                    "table_name": flow.state.table_name,
+                    "strategy": (flow.state.table_consultation or {}).get("strategy", ""),
+                    "violations": flow.state.violations,
+                    "ddl_result": flow.state.ddl_result,
+                    "load_result": flow.state.load_result,
+                    "trace_id": flow.state.trace_id,
+                },
+            )
+            or []
+        )
+        flow.state.receipt_md = flow.build_receipt()
+
+    return flow.state
 

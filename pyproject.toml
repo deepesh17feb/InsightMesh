@@ -20,6 +20,9 @@ dependencies = [
     "uvicorn>=0.30.0",
     "pydantic>=2.6.0",
     "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "mcp>=1.0",
+    "requests>=2.31",
 ]
 
 [project.optional-dependencies]
@@ -34,3 +37,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+atlys_agentic = ["config/*.yaml"]

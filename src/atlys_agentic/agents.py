@@ -1,13 +1,15 @@
 """Memory-free CrewAI agent personas.
 
-No agent below sets CrewAI's native Short/Long/Entity memory — every context
-an agent needs is passed in explicitly via task input or fetched at call time
-through a tool, never recalled from opaque agent memory (see final_wiby.md
-§2, the "no hidden LLM memory" principle).
+Every context an agent needs is passed in explicitly via task input or fetched
+at call time through a tool, never recalled from opaque agent memory. That
+guarantee is enforced by the deterministic flows in flows/ — no Crew is ever
+kicked off, so there is no agent loop to accumulate memory. memory=False below
+is belt-and-braces for the day one is.
 """
 import os
 from pathlib import Path
 
+import yaml
 from dotenv import load_dotenv
 
 from atlys_agentic import paths, tools
@@ -15,51 +17,16 @@ from atlys_agentic import paths, tools
 load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env", override=True)
 load_dotenv(paths.REPO_ROOT / ".env", override=True)
 
-try:
-    from crewai import Agent, LLM
-    from crewai.tools import tool
-except ImportError:  # pragma: no cover
-    class LLM:  # type: ignore
-        def __init__(self, model: str = "", is_litellm: bool = True, temperature: float = 0.0):
-            self.model = model
-            self.is_litellm = is_litellm
-            self.temperature = temperature
-
-    def tool(name: str):  # type: ignore
-        def decorator(fn):
-            fn.name = name
-            return fn
-        return decorator
-
-    class Agent:  # type: ignore
-        def __init__(
-            self,
-            role: str = "",
-            goal: str = "",
-            backstory: str = "",
-            tools: list = None,
-            llm=None,
-            memory: bool = False,
-            verbose: bool = True,
-            allow_delegation: bool = False,
-            max_iter: int = 5,
-            **kwargs,
-        ):
-            self.role = role
-            self.goal = goal
-            self.backstory = backstory
-            self.tools = tools or []
-            self.llm = llm
-            self.memory = memory
-            self.verbose = verbose
-            self.allow_delegation = allow_delegation
-            self.max_iter = max_iter
+from crewai import Agent, LLM
+from crewai.tools import tool
 
 
 def llm() -> LLM:
     """Routes through LiteLLM explicitly (is_litellm=True) rather than
-    CrewAI's native per-provider SDKs, so LiteLLM's Langfuse callback
-    (see tracing.init_litellm_callbacks) actually sees every call."""
+    CrewAI's native per-provider SDKs, for consistent provider routing across
+    every call site. Langfuse tracing is explicit at each call site via
+    tracing.generation()/tracing.span(), not via a LiteLLM callback — see
+    tracing.py's module docstring."""
     model = os.environ.get("LLM_MODEL", "gemini/gemini-3-flash-preview")
     temperature = float(os.environ.get("LLM_TEMPERATURE", "0"))
     return LLM(model=model, is_litellm=True, temperature=temperature)
@@ -121,210 +88,38 @@ def _score_confidence_tool(
     return tools.Tool_Score_Confidence(sample_size, effect_size_pct, known_issue_match, cut_consistency)
 
 
-_DEFAULT_AGENTS_CONFIG = {
-    "instrumentation_agent": {
-        "role": "Staff ClickHouse Systems & Telemetry Architect",
-        "goal": (
-            "Transform product feature specifications and raw telemetry event streams into production-grade, "
-            "high-performance ClickHouse DDL and high-leverage Materialized Views with zero schema anti-patterns."
-        ),
-        "backstory": (
-            "You are a veteran ClickHouse database architect specializing in high-throughput event telemetry "
-            "and real-time analytical engines. Always lead ordering keys with query filter predicates (timestamp, user_id). "
-            "Always partition raw tables by toYYYYMM(timestamp), strictly enforce LowCardinality types, apply 12-month TTLs, "
-            "and only generate Materialized Views that earn their keep with clear justification."
-        ),
-        "allow_delegation": False,
-        "verbose": True,
-        "max_iter": 5,
-    },
-    "context_agent": {
-        "role": "Lead Business-Logic Integrity Auditor & Context Gatekeeper",
-        "goal": (
-            "Maintain an authoritative, version-controlled business context layer in chDB, proactively detecting, "
-            "versioning, and surfacing every schema contradiction, metric gap, or semantic drift."
-        ),
-        "backstory": (
-            "You are the meticulous guardian of organizational business logic, metric definitions, and event schemas. "
-            "You treat initial documentation and base context with rigorous, constructive skepticism. Diff every schema change, "
-            "actively detect context traps (denominator ambiguity, data quality caveats, anti-patterns, boundary issues), "
-            "and record versioned changelog entries with trace attribution."
-        ),
-        "allow_delegation": False,
-        "verbose": True,
-        "max_iter": 5,
-    },
-    "analytics_agent": {
-        "role": "Principal Product Analytics & Growth Data Scientist",
-        "goal": (
-            "Deliver high-impact, PM-actionable product insights that uncover the root cause ('the why') behind "
-            "funnel conversion changes, supported by multi-dimensional cuts and calibrated confidence scores."
-        ),
-        "backstory": (
-            "You are a seasoned Principal Product Data Scientist who bridges complex ClickHouse analytics and executive "
-            "product strategy. Never pull raw rows into context; push aggregation into ClickHouse, mandate 3-way multi-cuts "
-            "(device_type, geoip_country_code, destination), match known platform issues (K1–K7), score confidence objectively, "
-            "and eliminate all SQL/DB jargon for PM audiences."
-        ),
-        "allow_delegation": False,
-        "verbose": True,
-        "max_iter": 5,
-    },
-    "query_architect": {
-        "role": "Staff ClickHouse Query & DDL Translation Architect",
-        "goal": (
-            "Render validated schema design intent, column structures, and analytical queries into highly performant, "
-            "syntactically optimal ClickHouse DDL, Materialized Views, and SQL statements."
-        ),
-        "backstory": (
-            "You are a precision SQL and DDL compiler specializing in ClickHouse Cloud syntax. "
-            "You take structured design intent, column types, and field mappings from the Instrumentation Agent "
-            "and translate them into clean CREATE TABLE, ALTER TABLE, CREATE MATERIALIZED VIEW, and INSERT statements. "
-            "You never make schema design decisions on your own and you never execute queries against any database directly."
-        ),
-        "allow_delegation": False,
-        "verbose": True,
-        "max_iter": 5,
-    },
-}
-# Legacy aliases
-_DEFAULT_AGENTS_CONFIG["instrumentation_engineer"] = _DEFAULT_AGENTS_CONFIG["instrumentation_agent"]
-_DEFAULT_AGENTS_CONFIG["context_librarian"] = _DEFAULT_AGENTS_CONFIG["context_agent"]
-_DEFAULT_AGENTS_CONFIG["product_analyst"] = _DEFAULT_AGENTS_CONFIG["analytics_agent"]
-
-
 def load_agents_config() -> dict:
-    """Load agent persona configuration (role, goal, backstory, parameters) from YAML config file."""
-    config_file = getattr(paths, "AGENTS_CONFIG_YAML", paths.ATLYS_AGENTIC_DIR / "config" / "agents.yaml")
-    if config_file.exists():
-        try:
-            import yaml
-            with open(config_file, "r", encoding="utf-8") as f:
-                loaded = yaml.safe_load(f)
-                if isinstance(loaded, dict) and loaded:
-                    return loaded
-        except Exception:
-            pass
-    return _DEFAULT_AGENTS_CONFIG
+    """Load agent personas (role, goal, backstory, params) from config/agents.yaml."""
+    with open(paths.AGENTS_CONFIG_YAML, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 
-def build_instrumentation_agent() -> Agent:
-    cfg = load_agents_config()
-    agent_cfg = cfg.get("instrumentation_agent") or cfg.get("instrumentation_engineer", _DEFAULT_AGENTS_CONFIG["instrumentation_agent"])
+def _build(persona: str, agent_tools: list) -> Agent:
+    cfg = load_agents_config()[persona]
     return Agent(
-        role=agent_cfg["role"],
-        goal=agent_cfg["goal"],
-        backstory=agent_cfg["backstory"].strip(),
-        tools=[
-            _infer_schema_tool,
-            _generate_mv_tool,
-            _explain_schema_rationale_tool,
-        ],
+        role=cfg["role"],
+        goal=cfg["goal"],
+        backstory=cfg["backstory"].strip(),
+        tools=agent_tools,
         llm=llm(),
         memory=False,
-        verbose=agent_cfg.get("verbose", True),
-        allow_delegation=agent_cfg.get("allow_delegation", False),
-        max_iter=agent_cfg.get("max_iter", 5),
+        verbose=cfg.get("verbose", True),
+        allow_delegation=cfg.get("allow_delegation", False),
+        max_iter=cfg.get("max_iter", 5),
     )
 
 
-def build_context_agent() -> Agent:
-    cfg = load_agents_config()
-    agent_cfg = cfg.get("context_agent") or cfg.get("context_librarian", _DEFAULT_AGENTS_CONFIG["context_agent"])
-    return Agent(
-        role=agent_cfg["role"],
-        goal=agent_cfg["goal"],
-        backstory=agent_cfg["backstory"].strip(),
-        tools=[
-            _consult_internal_tables_tool,
-            _context_diff_tool,
-            _execute_ddl_tool,
-            _context_upsert_tool,
-        ],
-        llm=llm(),
-        memory=False,
-        verbose=agent_cfg.get("verbose", True),
-        allow_delegation=agent_cfg.get("allow_delegation", False),
-        max_iter=agent_cfg.get("max_iter", 5),
-    )
+def build_instrumentation_engineer() -> Agent:
+    return _build("instrumentation_engineer", [_infer_schema_tool, _generate_mv_tool, _explain_schema_rationale_tool])
 
 
-def build_analytics_agent() -> Agent:
-    cfg = load_agents_config()
-    agent_cfg = cfg.get("analytics_agent") or cfg.get("product_analyst", _DEFAULT_AGENTS_CONFIG["analytics_agent"])
-    return Agent(
-        role=agent_cfg["role"],
-        goal=agent_cfg["goal"],
-        backstory=agent_cfg["backstory"].strip(),
-        tools=[_analytics_compute_tool, _score_confidence_tool],
-        llm=llm(),
-        memory=False,
-        verbose=agent_cfg.get("verbose", True),
-        allow_delegation=agent_cfg.get("allow_delegation", False),
-        max_iter=agent_cfg.get("max_iter", 5),
-    )
+def build_context_librarian() -> Agent:
+    return _build("context_librarian", [_consult_internal_tables_tool, _context_diff_tool, _execute_ddl_tool, _context_upsert_tool])
+
+
+def build_product_analyst() -> Agent:
+    return _build("product_analyst", [_analytics_compute_tool, _score_confidence_tool])
 
 
 def build_query_architect() -> Agent:
-    cfg = load_agents_config()
-    agent_cfg = cfg.get("query_architect", _DEFAULT_AGENTS_CONFIG["query_architect"])
-    return Agent(
-        role=agent_cfg["role"],
-        goal=agent_cfg["goal"],
-        backstory=agent_cfg["backstory"].strip(),
-        tools=[],
-        llm=llm(),
-        memory=False,
-        verbose=agent_cfg.get("verbose", True),
-        allow_delegation=agent_cfg.get("allow_delegation", False),
-        max_iter=agent_cfg.get("max_iter", 5),
-    )
-
-
-# Agent naming aliases matching problem statement and locked CUJ specifications
-build_instrumentation_engineer = build_instrumentation_agent
-build_context_librarian = build_context_agent
-build_product_analyst = build_analytics_agent
-
-
-@tool("resolve_path_or_spec")
-def _resolve_path_or_spec_tool(input_str: str) -> dict:
-    """Resolve raw directory path, file path, or spec slug into a validated spec directory."""
-    from atlys_agentic import tools_orchestrator
-    return tools_orchestrator.Tool_Resolve_Path_Or_Spec(input_str)
-
-
-@tool("discover_workspace_paths")
-def _discover_workspace_paths_tool(root_dir: str = "") -> list:
-    """Discover all available spec directories and telemetry datasets across the workspace."""
-    from atlys_agentic import tools_orchestrator
-    return tools_orchestrator.Tool_Discover_Workspace_Paths(root_dir or None)
-
-
-@tool("batch_scan_specs")
-def _batch_scan_specs_tool(folder_path: str) -> list:
-    """Recursively scan a parent folder for all valid spec directories ready for ingestion."""
-    from atlys_agentic import tools_orchestrator
-    return tools_orchestrator.Tool_Batch_Scan_Specs(folder_path)
-
-
-def build_orchestrator_agent() -> Agent:
-    """Build the front-door Orchestrator Agent responsible for path resolution,
-    workspace discovery, intent routing, and multi-spec batch coordination."""
-    return Agent(
-        role="Atlys Systems Orchestrator & Concierge",
-        goal="Parse raw user requests, resolve filesystem directory paths and feature specs, discover workspace datasets, and coordinate CUJ 1 and CUJ 2 flows seamlessly.",
-        backstory="""You are the lead Systems Orchestrator for Atlys Agentic Analytics. You understand developer intent,
-fuzzy directory paths, multi-spec batch ingestion workflows, and catalog discovery. You resolve ambiguous paths to verified
-spec packages and dispatch tasks cleanly to the Instrumentation Engineer or Product Analyst.""",
-        tools=[_resolve_path_or_spec_tool, _discover_workspace_paths_tool, _batch_scan_specs_tool],
-        llm=llm(),
-        memory=False,
-        verbose=True,
-        allow_delegation=False,
-        max_iter=5,
-    )
-
-
-
-
+    return _build("query_architect", [])

@@ -1,45 +1,6 @@
 """Tests for CUJ 1: Schema Ingestion, Evolution, Invariants, and Conversational HITL."""
-from unittest.mock import MagicMock, patch
-
-import pytest
-
-from atlys_agentic import conversational_ingestion, paths, tools
+from atlys_agentic import conversational_ingestion, tools
 from atlys_agentic.flows import ingestion_flow
-
-
-def test_validate_invariants_passes_compliant_ddl():
-    valid_ddl = (
-        "CREATE TABLE test_table (\n"
-        "    timestamp DateTime64(3),\n"
-        "    user_id String,\n"
-        "    device_type LowCardinality(String)\n"
-        ") ENGINE = MergeTree\n"
-        "PARTITION BY toYYYYMM(timestamp)\n"
-        "ORDER BY (timestamp, user_id)\n"
-        "TTL timestamp + INTERVAL 12 MONTH;"
-    )
-    violations = tools.Tool_Validate_Invariants(valid_ddl)
-    assert violations == []
-
-
-def test_validate_invariants_catches_all_four_violations():
-    # 1. id-first ordering
-    ddl_id_first = "CREATE TABLE t (id String, timestamp DateTime) ENGINE = MergeTree ORDER BY (id, timestamp) PARTITION BY toYYYYMM(timestamp) TTL timestamp + INTERVAL 12 MONTH;"
-    assert any("id" in v.lower() for v in tools.Tool_Validate_Invariants(ddl_id_first))
-
-
-    # 2. UUID-first ordering
-    ddl_uuid_first = "CREATE TABLE t (user_uuid UUID, timestamp DateTime) ENGINE = MergeTree ORDER BY (user_uuid, timestamp) PARTITION BY toYYYYMM(timestamp) TTL timestamp + INTERVAL 12 MONTH;"
-    assert any("uuid" in v.lower() for v in tools.Tool_Validate_Invariants(ddl_uuid_first))
-
-
-    # 3. Missing PARTITION BY
-    ddl_no_part = "CREATE TABLE t (timestamp DateTime, user_id String) ENGINE = MergeTree ORDER BY (timestamp, user_id) TTL timestamp + INTERVAL 12 MONTH;"
-    assert any("PARTITION BY clause is missing" in v for v in tools.Tool_Validate_Invariants(ddl_no_part))
-
-    # 4. Missing TTL
-    ddl_no_ttl = "CREATE TABLE t (timestamp DateTime, user_id String) ENGINE = MergeTree ORDER BY (timestamp, user_id) PARTITION BY toYYYYMM(timestamp);"
-    assert any("TTL clause is missing" in v for v in tools.Tool_Validate_Invariants(ddl_no_ttl))
 
 
 def test_detect_chat_intent_catalog_discovery():
@@ -110,3 +71,38 @@ def test_generate_proposal_and_deploy_in_dry_run_mode():
     assert deploy_state.receipt_md is not None
     assert "Reasoning chain" in deploy_state.receipt_md
     assert "outputs/submission/01_express_checkout/" in deploy_state.receipt_md
+
+
+def test_validate_invariants_passes_compliant_ddl():
+    valid_ddl = (
+        "CREATE TABLE test_table (\n"
+        "    timestamp DateTime64(3),\n"
+        "    user_id String,\n"
+        "    device_type LowCardinality(String)\n"
+        ") ENGINE = MergeTree\n"
+        "PARTITION BY toYYYYMM(timestamp)\n"
+        "ORDER BY (timestamp, user_id)\n"
+        "TTL timestamp + INTERVAL 12 MONTH;"
+    )
+    violations = tools.Tool_Validate_Invariants(valid_ddl)
+    assert violations == []
+
+
+def test_validate_invariants_catches_all_four_violations():
+    # 1. id-first ordering
+    ddl_id_first = "CREATE TABLE t (id String, timestamp DateTime) ENGINE = MergeTree ORDER BY (id, timestamp) PARTITION BY toYYYYMM(timestamp) TTL timestamp + INTERVAL 12 MONTH;"
+    assert any("id" in v.lower() for v in tools.Tool_Validate_Invariants(ddl_id_first))
+
+
+    # 2. UUID-first ordering
+    ddl_uuid_first = "CREATE TABLE t (user_uuid UUID, timestamp DateTime) ENGINE = MergeTree ORDER BY (user_uuid, timestamp) PARTITION BY toYYYYMM(timestamp) TTL timestamp + INTERVAL 12 MONTH;"
+    assert any("uuid" in v.lower() for v in tools.Tool_Validate_Invariants(ddl_uuid_first))
+
+
+    # 3. Missing PARTITION BY
+    ddl_no_part = "CREATE TABLE t (timestamp DateTime, user_id String) ENGINE = MergeTree ORDER BY (timestamp, user_id) TTL timestamp + INTERVAL 12 MONTH;"
+    assert any("PARTITION BY clause is missing" in v for v in tools.Tool_Validate_Invariants(ddl_no_part))
+
+    # 4. Missing TTL
+    ddl_no_ttl = "CREATE TABLE t (timestamp DateTime, user_id String) ENGINE = MergeTree ORDER BY (timestamp, user_id) PARTITION BY toYYYYMM(timestamp);"
+    assert any("TTL clause is missing" in v for v in tools.Tool_Validate_Invariants(ddl_no_ttl))

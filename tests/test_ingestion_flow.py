@@ -1,6 +1,6 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from atlys_agentic.flows.ingestion_flow import IngestionFlow, run
+from atlys_agentic.flows.ingestion_flow import run
 
 
 def test_approved_path_executes_ddl_and_runs_context_audit():

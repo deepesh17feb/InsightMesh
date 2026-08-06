@@ -5,13 +5,11 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
 
-from atlys_agentic import ch_client, chdb_client, clickhouse_mcp, paths
+from atlys_agentic import ch_client, chdb_client, paths
 from atlys_agentic.tools_common import (
     _columns_from_ddl,
     _flatten,
-    _infer_type,
     _load_events,
     embed_text,
 )
@@ -38,7 +36,6 @@ def Tool_Infer_Table_Name(spec_id: str, spec_md_text: str = "") -> str:
     if "_" in name and name.split("_")[0].isdigit():
         name = name.split("_", 1)[1]
     return name.lower()
-
 
 
 def _infer_cuj1_type(key: str, values: list, total_events: int) -> str:
@@ -289,7 +286,6 @@ def Tool_Execute_DDL(ddl: str, table_name: str, spec_id: str, dry_run: bool = Fa
         }
 
 
-
     try:
         chdb_client.run(ddl, fmt="CSV")
     except Exception:
@@ -384,79 +380,54 @@ def Tool_Context_Upsert(
     return new_version
 
 
-def Tool_Refresh_CHDB_From_Live() -> dict:
-    """Synchronize local chDB context with remote ClickHouse Cloud system tables."""
+def Tool_Write_Table_Semantics(
+    spec_id: str,
+    table_name: str,
+    spec_text: str,
+    column_names: list[str],
+    agent: str = "context_agent",
+    trace_id: str = "",
+) -> dict:
+    """Phase 6a: Context Agent writes schema description, concepts, and 768-dim embedding into table_semantics."""
     chdb_client.init_schema()
-    live_tables = []
-    try:
-        if not os.environ.get("PYTEST_CURRENT_TEST"):
-            rows = clickhouse_mcp.execute_query(
-                "SELECT name, engine, partition_key, sorting_key FROM system.tables WHERE database = currentDatabase()"
-            )
-            live_tables = rows or []
-    except Exception:
-        pass
 
-    synced_count = len(live_tables)
-    return {
-        "status": "synced",
-        "live_tables_found": synced_count,
-        "tables": [t.get("name") for t in live_tables if isinstance(t, dict)],
-    }
+    lines = [line.strip() for line in spec_text.splitlines() if line.strip() and not line.startswith("#")]
+    desc_snippet = lines[0] if lines else f"Feature spec — {table_name.replace('_', ' ').title()}"
 
+    concepts_list = [c for c in column_names if c not in ("timestamp", "user_id", "session_id")]
+    concepts_str = f"{table_name.replace('_', ' ')}, " + ", ".join(concepts_list[:8])
 
-def Tool_Build_Context_Package(spec_id: str, table_name: str) -> dict:
-    """Build unified context package from business_context and schema_registry."""
-    chdb_client.init_schema()
-    chdb_client.init_base_context()
+    semantic_doc = f"{table_name}: {desc_snippet}. Concepts: {concepts_str}."
+    embedding = embed_text(semantic_doc)
 
-    bc_rows = chdb_client.run("SELECT section, key, definition, version FROM business_context ORDER BY version DESC")
-    metrics_and_rules = []
-    known_issues = []
-    caveats = []
-
-    for r in bc_rows:
-        sec = (r.get("section") or "").lower()
-        key = (r.get("key") or "")
-        defn = (r.get("definition") or "")
-        entry = f"[{key}] {defn}"
-        if "known" in sec or key.startswith("K"):
-            known_issues.append(entry)
-        elif "caveat" in sec or "caveat" in defn.lower():
-            caveats.append(entry)
-        else:
-            metrics_and_rules.append(entry)
-
-    schema_rows = chdb_client.run(
-        f"SELECT \"table\", ddl, columns_json, version FROM schema_registry WHERE \"table\" = '{table_name}' ORDER BY version DESC LIMIT 1"
+    existing = chdb_client.run(
+        f"SELECT max(version) AS v FROM table_semantics WHERE table_name = '{table_name}'"
     )
-    prior_schema = schema_rows[0] if schema_rows else {}
+    version = (existing[0].get("v", 0) + 1) if (existing and existing[0].get("v") is not None) else 1
+
+    desc_escaped = desc_snippet.replace("'", "''")
+    concepts_escaped = concepts_str.replace("'", "''")
+    emb_json = json.dumps(embedding).replace("'", "''")
+
+    chdb_client.run(
+        f"""INSERT INTO table_semantics VALUES
+        ('{table_name}', '{spec_id}', '{desc_escaped}', '{concepts_escaped}',
+         '{emb_json}', {version}, now())""",
+        fmt="CSV",
+    )
+
+    chdb_client.run(
+        f"INSERT INTO context_changelog VALUES (now(), 'insert', '', '{desc_escaped}', '{agent}', '{trace_id}')",
+        fmt="CSV",
+    )
 
     return {
-        "spec_id": spec_id,
         "table_name": table_name,
-        "metrics_and_rules": metrics_and_rules[:15],
-        "known_issues": known_issues[:10],
-        "caveats": caveats[:10],
-        "prior_schema": prior_schema,
-    }
-
-
-def Tool_Decide_Strategy(context_package: dict, table_name: str, candidate_columns: list[str]) -> dict:
-    """Decide ingestion strategy (CREATE vs EVOLVE vs MERGE)."""
-    prior = context_package.get("prior_schema", {})
-    if not prior:
-        return {
-            "strategy": "CREATE",
-            "reason": f"Table `{table_name}` has no prior version registered in schema_registry. Proposing clean CREATE TABLE DDL.",
-            "target_version": 1,
-        }
-
-    prev_ver = prior.get("version", 1)
-    return {
-        "strategy": "EVOLVE",
-        "reason": f"Table `{table_name}` previously registered at version {prev_ver}. Proposing backward-compatible schema evolution.",
-        "target_version": prev_ver + 1,
+        "spec_id": spec_id,
+        "description": desc_snippet,
+        "concepts": concepts_str,
+        "embedding_dims": len(embedding),
+        "version": version,
     }
 
 
@@ -531,58 +502,6 @@ def Tool_Load_Events(
         "status": "loaded",
         "rows_loaded": rows_loaded,
         "verified_count": verified_count,
-    }
-
-
-
-def Tool_Write_Table_Semantics(
-    spec_id: str,
-    table_name: str,
-    spec_text: str,
-    column_names: list[str],
-    agent: str = "context_agent",
-    trace_id: str = "",
-) -> dict:
-    """Phase 6a: Context Agent writes schema description, concepts, and 768-dim embedding into table_semantics."""
-    chdb_client.init_schema()
-
-    lines = [line.strip() for line in spec_text.splitlines() if line.strip() and not line.startswith("#")]
-    desc_snippet = lines[0] if lines else f"Feature spec — {table_name.replace('_', ' ').title()}"
-
-    concepts_list = [c for c in column_names if c not in ("timestamp", "user_id", "session_id")]
-    concepts_str = f"{table_name.replace('_', ' ')}, " + ", ".join(concepts_list[:8])
-
-    semantic_doc = f"{table_name}: {desc_snippet}. Concepts: {concepts_str}."
-    embedding = embed_text(semantic_doc)
-
-    existing = chdb_client.run(
-        f"SELECT max(version) AS v FROM table_semantics WHERE table_name = '{table_name}'"
-    )
-    version = (existing[0].get("v", 0) + 1) if (existing and existing[0].get("v") is not None) else 1
-
-    desc_escaped = desc_snippet.replace("'", "''")
-    concepts_escaped = concepts_str.replace("'", "''")
-    emb_json = json.dumps(embedding).replace("'", "''")
-
-    chdb_client.run(
-        f"""INSERT INTO table_semantics VALUES
-        ('{table_name}', '{spec_id}', '{desc_escaped}', '{concepts_escaped}',
-         '{emb_json}', {version}, now())""",
-        fmt="CSV",
-    )
-
-    chdb_client.run(
-        f"INSERT INTO context_changelog VALUES (now(), 'insert', '', '{desc_escaped}', '{agent}', '{trace_id}')",
-        fmt="CSV",
-    )
-
-    return {
-        "table_name": table_name,
-        "spec_id": spec_id,
-        "description": desc_snippet,
-        "concepts": concepts_str,
-        "embedding_dims": len(embedding),
-        "version": version,
     }
 
 
