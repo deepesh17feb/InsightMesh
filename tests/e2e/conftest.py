@@ -13,7 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from atlys_agentic import ch_client, chdb_client, paths, tracing
+from atlys_agentic import ch_client, chdb_client, paths, tools_common, tracing
+from atlys_agentic import tools_cuj1
 
 
 @pytest.fixture
@@ -51,6 +52,17 @@ def mock_tracing(monkeypatch):
     mock_client.get_current_trace_id.return_value = "e2e-test-trace"
     mock_client.get_trace_url.return_value = None
     monkeypatch.setattr(tracing, "client", lambda: mock_client)
+
+
+@pytest.fixture(autouse=True)
+def stub_embed_text(monkeypatch):
+    """Prevent real LLM API calls to Gemini/OpenAI/etc for text embeddings.
+    embed_text() is called by Tool_Write_Table_Semantics during ingest().
+    Stub it to return empty embedding (matches its own documented fallback
+    behavior) so test suite incurs zero LLM network calls, independent of
+    PYTEST_CURRENT_TEST env var. Patch in tools_cuj1 where it's imported,
+    not just in tools_common where it's defined."""
+    monkeypatch.setattr(tools_cuj1, "embed_text", lambda text: [])
 
 
 @pytest.fixture
