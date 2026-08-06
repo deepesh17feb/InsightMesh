@@ -213,3 +213,92 @@ def span(
         pass
 
 
+def make_trace_public(trace_id: str, name: str = "cuj_trace", input_data: dict | None = None, output_data: dict | None = None) -> bool:
+    """Make any Langfuse trace publicly accessible via its URL without requiring login."""
+    if not trace_id:
+        return False
+    try:
+        import uuid
+        from datetime import datetime, timezone
+        import requests
+        pk = os.environ.get("LANGFUSE_PUBLIC_KEY")
+        sk = os.environ.get("LANGFUSE_SECRET_KEY")
+        host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com").rstrip("/")
+        if not (pk and sk):
+            return False
+
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        body = {
+            "id": trace_id,
+            "name": name,
+            "timestamp": now_iso,
+            "public": True,
+            "tags": ["public", "verified"],
+        }
+        if input_data:
+            body["input"] = input_data
+        if output_data:
+            body["output"] = output_data
+
+        payload = {
+            "batch": [
+                {
+                    "id": str(uuid.uuid4()),
+                    "type": "trace-create",
+                    "timestamp": now_iso,
+                    "body": body,
+                }
+            ]
+        }
+        resp = requests.post(f"{host}/api/public/ingestion", json=payload, auth=(pk, sk), timeout=10)
+        return resp.status_code in (200, 201, 207)
+    except Exception:
+        return False
+
+
+def publish_all_project_traces() -> int:
+    """Publish all traces in the Langfuse project, making them publicly accessible worldwide."""
+    published = 0
+    try:
+        import uuid
+        from datetime import datetime, timezone
+        import requests
+        pk = os.environ.get("LANGFUSE_PUBLIC_KEY")
+        sk = os.environ.get("LANGFUSE_SECRET_KEY")
+        host = os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com").rstrip("/")
+        c = client()
+
+        page = 1
+        limit = 100
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        while True:
+            res = c.api.trace.list(page=page, limit=limit)
+            trace_items = getattr(res, "data", []) or []
+            if not trace_items:
+                break
+
+            batch = []
+            for t in trace_items:
+                tid = getattr(t, "id", None)
+                if tid:
+                    batch.append({
+                        "id": str(uuid.uuid4()),
+                        "type": "trace-create",
+                        "timestamp": now_iso,
+                        "body": {
+                            "id": tid,
+                            "public": True,
+                        },
+                    })
+
+            if batch:
+                resp = requests.post(f"{host}/api/public/ingestion", json={"batch": batch}, auth=(pk, sk), timeout=10)
+                if resp.status_code in (200, 201, 207):
+                    published += len(batch)
+
+            if len(trace_items) < limit:
+                break
+            page += 1
+    except Exception:
+        pass
+    return published
