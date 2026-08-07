@@ -467,9 +467,12 @@ def Tool_Load_Events(
         ch_client.insert_ndjson(table_name, content)
 
         # 2. Insert into local chDB for local offline queries
+        # ponytail: flatten nested JSON manually for chdb (lacks input_format_import_nested_json)
         try:
+            flattened_events = [_flatten(ev) for ev in events]
+            flattened_ndjson = "\n".join(json.dumps(ev) for ev in flattened_events)
             chdb_client.run(
-                f"INSERT INTO {table_name} SETTINGS date_time_input_format='best_effort', input_format_import_nested_json=1 FORMAT JSONEachRow\n{content}",
+                f"INSERT INTO {table_name} SETTINGS date_time_input_format='best_effort' FORMAT JSONEachRow\n{flattened_ndjson}",
                 fmt="CSV",
             )
         except Exception:
