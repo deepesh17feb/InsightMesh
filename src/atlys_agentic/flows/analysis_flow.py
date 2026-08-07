@@ -437,10 +437,9 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                 {"segment": "Desktop", "volume": 307, "dropoff_pct": 0.0},
             ],
             "metric_deltas": [
-                {"metric": "Live Events Scanned", "baseline": "N/A", "observed": f"{total_events:,}" if total_events else "5,507", "delta": "Live Sample N", "impact": "Verified Real Data"},
-                {"metric": "Unique Active Users", "baseline": "N/A", "observed": f"{total_users:,}" if total_users else "1,650", "delta": "Distinct Users", "impact": "Verified Real Data"},
+                {"metric": "Live Events Scanned", "baseline": "N/A", "observed": f"{total_events:,}" if total_events else "—", "delta": "Live Sample N", "impact": "Verified Real Data"},
+                {"metric": "Unique Active Users", "baseline": "N/A", "observed": f"{total_users:,}" if total_users else "—", "delta": "Distinct Users", "impact": "Verified Real Data"},
                 {"metric": f"{top_segment} Dropoff Rate", "baseline": "0.0%", "observed": f"{top_dropoff}%", "delta": f"+{top_dropoff} pp", "impact": "Cohort Divergence" if top_dropoff > 0 else "Baseline Normal"},
-                {"metric": "Statistical Sample Confidence", "baseline": "0.50", "observed": f"{self.state.confidence.get('score', 0.85):.2f}", "delta": "Scored on N", "impact": "High Reliability"},
             ],
         }
 

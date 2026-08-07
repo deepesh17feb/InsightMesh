@@ -293,6 +293,12 @@ export default function ChatPage() {
           const isUser = msg.role === "user";
           const showInsightCard =
             !isUser && msg.insight && !NON_ANALYTICAL_SPEC_IDS.has(msg.insight.specId);
+          if (!isUser && !msg.content && !msg.insight) {
+            // Placeholder assistant message mid-fetch: the isLoading block below
+            // already renders the real loading indicator/skeleton, so this message
+            // itself has nothing to show yet.
+            return null;
+          }
           return (
             <div
               key={msg.id}

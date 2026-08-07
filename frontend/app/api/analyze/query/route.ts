@@ -4,7 +4,7 @@ export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
-    const { question, spec_id } = await req.json();
+    const { question } = await req.json();
 
     const backendUrl =
       process.env.INSIGHTMESH_BACKEND_URL ||
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         question,
-        spec_id: spec_id || "chat",
+        spec_id: "chat",
       }),
     });
 

@@ -48,8 +48,17 @@ Captured the same way `ingestion_flow.generate_proposal()` already does it (`ing
 trace id is unavailable once the block exits (see `tracing.py` module docstring).
 
 `/api/analyze/query` (`run_chat.py:132-150`) adds `"trace_url": result.get("trace_url", "")` to its
-response dict. No other backend change — `executive_summary`, `confidence`, `cuts`, `views`,
-`sql_queries`, `trace_id`, `spec_id` already flow through unchanged.
+response dict. `executive_summary`, `confidence`, `cuts`, `views`, `sql_queries`, `trace_id`
+already flow through unchanged.
+
+`spec_id` needed an actual fix, not just a pass-through: the endpoint was previously echoing back
+`req.spec_id` (the caller's own value) instead of `result.get("spec_id", req.spec_id)` (the
+backend's real classification from `analysis_flow.run()` — `"conversational"`,
+`"abusive_deescalation"`, `"out_of_scope"`, `"none"`, or a real spec_id). Discovered during final
+review: since the frontend always sends `spec_id: "chat"` (see §4), the bug meant every response
+echoed `"chat"` back regardless of what the backend actually classified the question as — silently
+breaking the non-analytical-reply routing in §6, which depends on reading the backend's
+classification out of `insight.specId`.
 
 ## 4. Frontend architecture
 
@@ -93,6 +102,12 @@ path unchanged; analyst mode does a plain `fetch("/api/analyze/query", { method:
 { question, spec_id: "chat" } })`, awaits the JSON body, and sets `insight` on the placeholder
 message (converting the response's `snake_case` keys to the `Insight` type's `camelCase` — a
 one-line mapping function, not a library).
+
+The browser's `fetch("/api/analyze/query")` call needs a Next.js route to land on — that path only
+exists on the FastAPI backend, not on the Next.js app. `frontend/app/api/analyze/query/route.ts`
+(new file) is a thin proxy that forwards `question` to `${INSIGHTMESH_BACKEND_URL}/api/analyze/query`
+with a hardcoded `spec_id: "chat"` (the only value the browser ever sends), mirroring the existing
+`frontend/app/api/chat/route.ts` proxy pattern used by instrumentation mode.
 
 New file `frontend/app/components/InsightCard.tsx` — pure presentational component, `{ insight:
 Insight }` props, no data fetching of its own. `page.tsx`'s message-rendering loop checks
@@ -174,8 +189,13 @@ crashing on `undefined`.
 - `frontend/app/components/InsightCard.tsx` — the 5-section card (new file).
 - `frontend/app/components/InsightCardSkeleton.tsx` — loading placeholder matching the real
   layout (new file).
+- `frontend/app/api/analyze/query/route.ts` — Next.js proxy route so the browser's
+  `fetch("/api/analyze/query")` reaches the FastAPI backend; mirrors the existing
+  `frontend/app/api/chat/route.ts` pattern (new file).
 - `src/atlys_agentic/flows/analysis_flow.py` — add `trace_url` to `run()`'s return dict.
-- `src/atlys_agentic/run_chat.py` — add `trace_url` to `/api/analyze/query`'s response dict.
+- `src/atlys_agentic/run_chat.py` — add `trace_url` to `/api/analyze/query`'s response dict, and
+  fix `spec_id` to return `result.get("spec_id", req.spec_id)` (the backend's real classification)
+  instead of echoing `req.spec_id` back unchanged.
 
 ## 8. Out of scope
 

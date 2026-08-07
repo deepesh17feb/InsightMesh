@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   Sparkles,
   Table2,
@@ -103,7 +104,9 @@ export default function InsightCard({ insight }: { insight: Insight }) {
               {"●"} {(insight.confidence?.score ?? 0).toFixed(2)}
             </span>
           </div>
-          <p className="text-sm leading-relaxed text-slate-200">{insight.executiveSummary}</p>
+          <div className="prose prose-invert prose-sm max-w-none text-sm leading-relaxed text-slate-200 prose-p:my-0 prose-p:leading-relaxed">
+            <ReactMarkdown>{insight.executiveSummary}</ReactMarkdown>
+          </div>
         </div>
 
         {hasFacts && (
