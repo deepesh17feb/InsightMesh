@@ -137,7 +137,7 @@ def analyze_query(req: AnalysisRequest):
     return {
         "status": "success",
         "question": req.question,
-        "spec_id": req.spec_id,
+        "spec_id": result.get("spec_id", req.spec_id),
         "executive_summary": result.get("executive_summary", ""),
         "answer_md": result.get("answer_md", ""),
         "confidence": result.get("confidence", {}),
