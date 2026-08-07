@@ -17,30 +17,31 @@ from atlys_agentic import ch_client, chdb_client, paths, tools_common, tracing
 from atlys_agentic import tools_cuj1
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def chdb_only_ch_client(monkeypatch):
     """Route ch_client.command/select/insert_ndjson at the local chdb session
     so CUJ1 writes and CUJ2 reads share one real embedded ClickHouse engine
-    instead of touching live Cloud."""
+    instead of touching live Cloud, AND lift the PYTEST_CURRENT_TEST guard
+    that Tool_Load_Events / Tool_Analytics_Compute both check to no-op against
+    live ClickHouse Cloud. These two effects must always happen together --
+    routing ch_client at chdb without lifting the guard leaves storage calls
+    no-op'd; lifting the guard without routing ch_client sends real calls at
+    live Cloud (CLICKHOUSE_HOST is set in this environment). autouse=True so
+    every test in tests/e2e/ gets both, with no way to get one without the
+    other. This suite calls only tool-layer functions -- never the LLM-gated
+    flow orchestration -- so lifting the guard for the test body triggers no
+    network or LLM calls, only the real storage code paths."""
     monkeypatch.setattr(ch_client, "command", lambda ddl: chdb_client.run(ddl, fmt="CSV"))
     monkeypatch.setattr(ch_client, "select", lambda sql: chdb_client.run(sql))
     monkeypatch.setattr(ch_client, "insert_ndjson", lambda table, content: None, raising=False)
     chdb_client.init_schema()
-    return ch_client
 
-
-@pytest.fixture
-def no_pytest_guard(monkeypatch):
-    """Tool_Load_Events / Tool_Analytics_Compute both no-op under
-    PYTEST_CURRENT_TEST as a belt against tests hitting live ClickHouse Cloud.
-    This suite calls only tool-layer functions -- never the LLM-gated flow
-    orchestration -- so lifting the guard for the test body triggers no
-    network or LLM calls, only the real storage code paths."""
     # ponytail: can't delenv or setenv — pytest re-sets PYTEST_CURRENT_TEST during
     # test execution. Patch os.environ.get to hide it from tools.
     import os
     original_get = os.environ.get
     monkeypatch.setattr(os.environ, "get", lambda key, default=None: None if key == "PYTEST_CURRENT_TEST" else original_get(key, default))
+    return ch_client
 
 
 @pytest.fixture(autouse=True)
@@ -101,3 +102,11 @@ def synthetic_spec():
                 chdb_client.run(cleanup_sql, fmt="CSV")
             except Exception:
                 pass
+    if created_tables:
+        # Tool_Write_Table_Semantics also inserts a context_changelog row per
+        # call, tagged trace_id='e2e' by pipeline_helpers.ingest(). Not scoped
+        # by table_name, so clean up once rather than per table.
+        try:
+            chdb_client.run("ALTER TABLE context_changelog DELETE WHERE trace_id = 'e2e'", fmt="CSV")
+        except Exception:
+            pass

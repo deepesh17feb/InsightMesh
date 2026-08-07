@@ -12,7 +12,7 @@ from atlys_agentic import tools
 from tests.e2e import pipeline_helpers, synthetic_data
 
 
-def test_harness_persists_and_queries_via_chdb(chdb_only_ch_client, no_pytest_guard, synthetic_spec):
+def test_harness_persists_and_queries_via_chdb(synthetic_spec):
     """Minimal round trip proving the harness itself works: two events in,
     queryable back out through the real CUJ1/CUJ2 tool functions."""
     spec_md_text = "# Feature spec — Harness Smoke Test\n\n## What it does\nHarness check.\n"
@@ -41,10 +41,10 @@ def test_harness_persists_and_queries_via_chdb(chdb_only_ch_client, no_pytest_gu
     assert rows[0]["c"] == 2
 
 
-def test_happy_path_ingest_and_query(chdb_only_ch_client, no_pytest_guard, synthetic_spec):
+def test_happy_path_ingest_and_query(synthetic_spec):
     """Full funnel: shown -> selected -> otp_entered -> (confirmed if OTP
     succeeded). Asserts exact aggregate correctness, a point lookup by
-    application_id, schema integrity via DESCRIBE TABLE, the table_semantics
+    application_id, schema integrity via system.columns, the table_semantics
     handoff CUJ1 writes for CUJ2 (docs/CUJ1.md §6a), and query latency."""
     spec_md_text, events, expected = synthetic_data.happy_path(num_applications=50)
     spec_id, table_name = synthetic_spec("happy_path", spec_md_text, events)
@@ -85,17 +85,19 @@ def test_happy_path_ingest_and_query(chdb_only_ch_client, no_pytest_guard, synth
     assert rows[0]["shown_amount"] == pytest.approx(sample["shown_amount"], abs=0.01)
 
     # -- schema integrity: declared columns actually exist with the inferred types --
-    described, _ = pipeline_helpers.query(f"DESCRIBE TABLE {table_name}")
+    described, _ = pipeline_helpers.query(
+        f"SELECT name, type FROM system.columns WHERE table = '{table_name}'"
+    )
     described_cols = {row["name"] for row in described}
     for col in tools._columns_from_ddl(ingest_result["ddl"]):
-        assert col in described_cols, f"column '{col}' missing from DESCRIBE TABLE output"
+        assert col in described_cols, f"column '{col}' missing from system.columns output"
 
     # -- CUJ1 -> CUJ2 handoff: table_semantics row exists for this table --
     assert ingest_result["semantics"]["table_name"] == table_name
     assert ingest_result["semantics"]["version"] >= 1
 
 
-def test_boundary_cases_survive_round_trip(chdb_only_ch_client, no_pytest_guard, synthetic_spec):
+def test_boundary_cases_survive_round_trip(synthetic_spec):
     """NULL optional fields, unicode + SQL-lookalike strings, a max-length
     string, a float-precision edge value, and timestamps sitting exactly on
     a toYYYYMM() partition boundary -- none may be dropped or corrupted."""
@@ -139,7 +141,7 @@ def test_boundary_cases_survive_round_trip(chdb_only_ch_client, no_pytest_guard,
     assert all(r["c"] == 1 for r in rows)
 
 
-def test_out_of_order_events_query_correctly(chdb_only_ch_client, no_pytest_guard, synthetic_spec):
+def test_out_of_order_events_query_correctly(synthetic_spec):
     """Events are inserted in a scrambled order relative to their timestamps
     (simulating late-arriving / backfilled data). A time-ordered CUJ2 query
     must return them in chronological order regardless of insertion order."""
@@ -157,7 +159,7 @@ def test_out_of_order_events_query_correctly(chdb_only_ch_client, no_pytest_guar
     assert [r["id"] for r in rows] != expected["insertion_order_ids"]
 
 
-def test_duplicate_events_are_not_silently_deduped(chdb_only_ch_client, no_pytest_guard, synthetic_spec):
+def test_duplicate_events_are_not_silently_deduped(synthetic_spec):
     """MergeTree does not deduplicate on INSERT. Two of three events are
     loaded twice (exact same id). CUJ2 must show the raw duplication via
     count() and the true distinct count via uniqExact(id) -- confirming

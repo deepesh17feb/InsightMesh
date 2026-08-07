@@ -40,6 +40,7 @@ def ingest(spec_id: str, table_name: str, expected_row_count: int) -> dict:
         table_name=table_name,
         spec_text=spec_text,
         column_names=tools._columns_from_ddl(ddl),
+        trace_id="e2e",
     )
 
     return {"ddl": ddl, "ddl_result": ddl_result, "load_result": load_result, "semantics": semantics}
@@ -49,5 +50,8 @@ def query(sql: str, spec_id: str = "") -> tuple[list[dict], float]:
     """Run a CUJ2 analytics query through the real tool and return (rows, elapsed_seconds)."""
     start = time.perf_counter()
     result = tools.Tool_Analytics_Compute(sql, spec_id=spec_id)
+    assert result["engine"] not in ("chdb_file", "fallback_empty"), (
+        f"query bypassed persisted storage: engine={result['engine']!r}"
+    )
     elapsed = time.perf_counter() - start
     return result["rows"], elapsed

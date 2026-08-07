@@ -167,9 +167,9 @@ def test_execute_ddl_failure_rolls_back_and_reports_error():
 
 
 def test_analytics_compute_rejects_non_select():
-    with pytest.raises(ValueError, match="SELECT/DESCRIBE"):
+    with pytest.raises(ValueError, match="Only SELECT queries are allowed"):
         tools.Tool_Analytics_Compute("DROP TABLE purchase_completed")
-    with pytest.raises(ValueError, match="SELECT/DESCRIBE"):
+    with pytest.raises(ValueError, match="Only SELECT queries are allowed"):
         tools.Tool_Analytics_Compute("INSERT INTO x VALUES (1)")
 
 

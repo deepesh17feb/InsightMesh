@@ -100,8 +100,8 @@ def _assert_select_only(sql: str) -> None:
         raise ValueError("Empty SQL query is not allowed.")
     low = sql_clean.lower()
     first_token = low.split()[0] if low.split() else ""
-    if first_token not in ("select", "with", "describe"):
-        raise ValueError(f"Only SELECT/DESCRIBE queries are allowed in analytics; got '{first_token}'")
+    if first_token not in ("select", "with"):
+        raise ValueError(f"Only SELECT queries are allowed in analytics; got '{first_token}'")
     forbidden = ["insert", "alter", "drop", "create", "delete", "update", "truncate", "system", "grant", "revoke"]
     for word in low.split():
         cleaned_word = word.strip("();,")

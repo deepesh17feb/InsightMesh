@@ -43,10 +43,17 @@ metadata (`schema_registry`, `business_context`, `table_semantics`) and "analyti
 data for the duration of the test. No double-insert (only one of the two historical
 Cloud/chDB write paths is live), no network, fully deterministic.
 
-**`PYTEST_CURRENT_TEST` is unset narrowly.** The fixture does
-`monkeypatch.delenv("PYTEST_CURRENT_TEST")` scoped only around the `Tool_Load_Events` and
-`Tool_Analytics_Compute` calls — not around a full flow — so LLM-gated branches elsewhere
-(schema-reasoning prose, embeddings) stay off. Zero real API calls, zero flakiness.
+**`PYTEST_CURRENT_TEST` is unset for the whole test body.** The autouse
+`chdb_only_ch_client` fixture patches `os.environ.get` (can't `delenv`/`setenv` —
+pytest re-sets `PYTEST_CURRENT_TEST` during test execution) so any code that reads
+that key sees it as unset for the duration of the entire test, not just around the
+`Tool_Load_Events` / `Tool_Analytics_Compute` calls. This is what lets those two
+functions take their real storage code paths instead of no-op'ing. It does *not*
+gate LLM calls on its own — the separate autouse `stub_embed_text` fixture
+unconditionally monkeypatches `tools_cuj1.embed_text` to return `[]`, independent of
+`PYTEST_CURRENT_TEST`'s state, so `Tool_Write_Table_Semantics`'s embedding call never
+reaches Gemini/OpenAI/etc regardless of the env-var patch above. Zero real API calls,
+zero flakiness.
 
 **Tool-layer, not flow-layer.** The suite calls
 `Tool_Infer_Schema → Tool_Validate_Invariants → Tool_Execute_DDL → Tool_Load_Events →
@@ -96,8 +103,8 @@ directory. Created in a fixture, `shutil.rmtree`'d in teardown.
 ## 6. Out of scope
 
 - Real ClickHouse Cloud / network — explicitly rejected in favor of local chdb (user decision).
-- LLM-driven schema reasoning / semantic retrieval ranking quality — `embed_text` returns `[]`
-  under `PYTEST_CURRENT_TEST` (left set for that call), matching the documented "unranked
+- LLM-driven schema reasoning / semantic retrieval ranking quality — the `stub_embed_text`
+  fixture unconditionally makes `embed_text` return `[]`, matching the documented "unranked
   candidate" fallback rather than exercising real embeddings.
 - Fixing the `analysis_flow.run()` ndjson-file bypass or the missing `ch_client.insert_ndjson`
   — both noted as findings, not fixed here; out of this task's scope.
