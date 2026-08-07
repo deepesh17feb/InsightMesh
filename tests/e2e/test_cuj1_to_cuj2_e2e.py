@@ -155,3 +155,20 @@ def test_out_of_order_events_query_correctly(chdb_only_ch_client, no_pytest_guar
     assert elapsed < pipeline_helpers.LATENCY_BUDGET_SECONDS
     assert [r["id"] for r in rows] == expected["chronological_ids"]
     assert [r["id"] for r in rows] != expected["insertion_order_ids"]
+
+
+def test_duplicate_events_are_not_silently_deduped(chdb_only_ch_client, no_pytest_guard, synthetic_spec):
+    """MergeTree does not deduplicate on INSERT. Two of three events are
+    loaded twice (exact same id). CUJ2 must show the raw duplication via
+    count() and the true distinct count via uniqExact(id) -- confirming
+    which query shape a correctness-sensitive caller actually needs."""
+    spec_md_text, events, expected = synthetic_data.duplicate_events()
+    spec_id, table_name = synthetic_spec("dup", spec_md_text, events)
+
+    pipeline_helpers.ingest(spec_id, table_name, expected["raw_row_count"])
+
+    rows, _ = pipeline_helpers.query(f"SELECT count() AS c FROM {table_name}", spec_id=spec_id)
+    assert rows[0]["c"] == expected["raw_row_count"]
+
+    rows, _ = pipeline_helpers.query(f"SELECT uniqExact(id) AS c FROM {table_name}", spec_id=spec_id)
+    assert rows[0]["c"] == expected["distinct_id_count"]

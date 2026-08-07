@@ -267,3 +267,59 @@ def out_of_order() -> tuple[str, list[dict], dict]:
         "insertion_order_ids": [chronological_ids[i] for i in insertion_order],
     }
     return SPEC_MD_TEMPLATE.format(title="Out Of Order"), events, expected
+
+
+def duplicate_events() -> tuple[str, list[dict], dict]:
+    """3 distinct events; the first two are appended a second time with the
+    exact same id, simulating an at-least-once delivery retry."""
+    base = [
+        {
+            "event": "express_checkout_shown",
+            "id": "e2e_dup_1",
+            "timestamp": "2026-06-01T00:00:00.000",
+            "device_type": "ios",
+            "os": "iOS",
+            "geoip_country_code": "IN",
+            "user_id": "e2e_dup_user_1",
+            "application_id": "e2e_dup_app_1",
+            "destination": "IN",
+            "eligible": True,
+            "shown_amount": 100.0,
+            "currency": "INR",
+        },
+        {
+            "event": "express_checkout_shown",
+            "id": "e2e_dup_2",
+            "timestamp": "2026-06-01T00:01:00.000",
+            "device_type": "android",
+            "os": "Android",
+            "geoip_country_code": "SG",
+            "user_id": "e2e_dup_user_2",
+            "application_id": "e2e_dup_app_2",
+            "destination": "SG",
+            "eligible": True,
+            "shown_amount": 200.0,
+            "currency": "SGD",
+        },
+        {
+            "event": "express_checkout_shown",
+            "id": "e2e_dup_3",
+            "timestamp": "2026-06-01T00:02:00.000",
+            "device_type": "Desktop",
+            "os": "Mac OS X",
+            "geoip_country_code": "US",
+            "user_id": "e2e_dup_user_3",
+            "application_id": "e2e_dup_app_3",
+            "destination": "US",
+            "eligible": True,
+            "shown_amount": 300.0,
+            "currency": "USD",
+        },
+    ]
+    events = base + [dict(base[0]), dict(base[1])]
+
+    expected = {
+        "raw_row_count": len(events),
+        "distinct_id_count": len(base),
+    }
+    return SPEC_MD_TEMPLATE.format(title="Duplicate Events"), events, expected
