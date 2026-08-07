@@ -123,3 +123,109 @@ def happy_path(num_applications: int = 50) -> tuple[str, list[dict], dict]:
         "sample_application": sample_application,
     }
     return SPEC_MD_TEMPLATE.format(title="Happy Path"), events, expected
+
+
+def boundary_cases() -> tuple[str, list[dict], dict]:
+    """One event missing an optional numeric field entirely (exercises
+    Nullable), one with a unicode + SQL-lookalike string (exercises the safe
+    JSONEachRow insert path -- no manual SQL string interpolation), one with
+    a long string, one with an unrounded float, and two sitting exactly on a
+    January/February toYYYYMM() partition boundary."""
+    long_city = "x" * 500
+    unicode_city = "北京 — 'quoted'; DROP TABLE nope; --"
+    precise_amount = 0.1 + 0.2  # 0.30000000000000004
+
+    events = [
+        {  # no shown_amount / currency at all -> exercises Nullable(Float64)
+            "event": "express_checkout_shown",
+            "id": "e2e_boundary_null_amount",
+            "timestamp": "2026-06-01T00:00:00.000",
+            "device_type": "ios",
+            "os": "iOS",
+            "geoip_country_code": "IN",
+            "user_id": "e2e_boundary_user_1",
+            "application_id": "e2e_boundary_app_1",
+            "destination": "IN",
+            "eligible": True,
+        },
+        {
+            "event": "express_checkout_shown",
+            "id": "e2e_boundary_unicode",
+            "timestamp": "2026-06-01T00:01:00.000",
+            "device_type": "ios",
+            "os": "iOS",
+            "geoip_country_code": "CN",
+            "city": unicode_city,
+            "user_id": "e2e_boundary_user_2",
+            "application_id": "e2e_boundary_app_2",
+            "destination": "CN",
+            "eligible": True,
+            "shown_amount": 100.0,
+            "currency": "CNY",
+        },
+        {
+            "event": "express_checkout_shown",
+            "id": "e2e_boundary_long_string",
+            "timestamp": "2026-06-01T00:02:00.000",
+            "device_type": "ios",
+            "os": "iOS",
+            "geoip_country_code": "IN",
+            "city": long_city,
+            "user_id": "e2e_boundary_user_3",
+            "application_id": "e2e_boundary_app_3",
+            "destination": "IN",
+            "eligible": True,
+            "shown_amount": 100.0,
+            "currency": "INR",
+        },
+        {
+            "event": "express_payment_confirmed",
+            "id": "e2e_boundary_float_precision",
+            "timestamp": "2026-06-01T00:03:00.000",
+            "device_type": "ios",
+            "os": "iOS",
+            "geoip_country_code": "IN",
+            "user_id": "e2e_boundary_user_4",
+            "application_id": "e2e_boundary_app_4",
+            "destination": "IN",
+            "payment": {"amount": precise_amount, "currency": "INR", "latency_ms": 1000},
+        },
+        {  # last moment of the January partition
+            "event": "express_checkout_shown",
+            "id": "e2e_boundary_jan_edge",
+            "timestamp": "2026-01-31T23:59:59.000",
+            "device_type": "ios",
+            "os": "iOS",
+            "geoip_country_code": "IN",
+            "user_id": "e2e_boundary_user_5",
+            "application_id": "e2e_boundary_app_5",
+            "destination": "IN",
+            "eligible": True,
+            "shown_amount": 50.0,
+            "currency": "INR",
+        },
+        {  # first moment of the February partition
+            "event": "express_checkout_shown",
+            "id": "e2e_boundary_feb_edge",
+            "timestamp": "2026-02-01T00:00:00.000",
+            "device_type": "ios",
+            "os": "iOS",
+            "geoip_country_code": "IN",
+            "user_id": "e2e_boundary_user_6",
+            "application_id": "e2e_boundary_app_6",
+            "destination": "IN",
+            "eligible": True,
+            "shown_amount": 50.0,
+            "currency": "INR",
+        },
+    ]
+
+    expected = {
+        "total_events": len(events),
+        "unicode_city": unicode_city,
+        "long_city_length": len(long_city),
+        "precise_amount": precise_amount,
+        "jan_partition": "202601",
+        "feb_partition": "202602",
+    }
+    return SPEC_MD_TEMPLATE.format(title="Boundary Cases"), events, expected

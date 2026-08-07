@@ -93,3 +93,47 @@ def test_happy_path_ingest_and_query(chdb_only_ch_client, no_pytest_guard, synth
     # -- CUJ1 -> CUJ2 handoff: table_semantics row exists for this table --
     assert ingest_result["semantics"]["table_name"] == table_name
     assert ingest_result["semantics"]["version"] >= 1
+
+
+def test_boundary_cases_survive_round_trip(chdb_only_ch_client, no_pytest_guard, synthetic_spec):
+    """NULL optional fields, unicode + SQL-lookalike strings, a max-length
+    string, a float-precision edge value, and timestamps sitting exactly on
+    a toYYYYMM() partition boundary -- none may be dropped or corrupted."""
+    spec_md_text, events, expected = synthetic_data.boundary_cases()
+    spec_id, table_name = synthetic_spec("boundary", spec_md_text, events)
+
+    pipeline_helpers.ingest(spec_id, table_name, expected["total_events"])
+
+    rows, _ = pipeline_helpers.query(
+        f"SELECT shown_amount FROM {table_name} WHERE id = 'e2e_boundary_null_amount'",
+        spec_id=spec_id,
+    )
+    assert len(rows) == 1
+    assert rows[0]["shown_amount"] is None
+
+    rows, _ = pipeline_helpers.query(
+        f"SELECT city FROM {table_name} WHERE id = 'e2e_boundary_unicode'",
+        spec_id=spec_id,
+    )
+    assert rows[0]["city"] == expected["unicode_city"]
+
+    rows, _ = pipeline_helpers.query(
+        f"SELECT length(city) AS n FROM {table_name} WHERE id = 'e2e_boundary_long_string'",
+        spec_id=spec_id,
+    )
+    assert rows[0]["n"] == expected["long_city_length"]
+
+    rows, _ = pipeline_helpers.query(
+        f"SELECT payment_amount FROM {table_name} WHERE id = 'e2e_boundary_float_precision'",
+        spec_id=spec_id,
+    )
+    assert rows[0]["payment_amount"] == pytest.approx(expected["precise_amount"], rel=1e-12)
+
+    rows, _ = pipeline_helpers.query(
+        f"SELECT toYYYYMM(timestamp) AS part, count() AS c FROM {table_name} "
+        f"WHERE id IN ('e2e_boundary_jan_edge', 'e2e_boundary_feb_edge') "
+        f"GROUP BY part ORDER BY part",
+        spec_id=spec_id,
+    )
+    assert [str(r["part"]) for r in rows] == [expected["jan_partition"], expected["feb_partition"]]
+    assert all(r["c"] == 1 for r in rows)
