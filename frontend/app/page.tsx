@@ -1,26 +1,43 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
 import {
   Send,
   Sparkles,
-  Database,
-  Cpu,
   RefreshCw,
-  Copy,
-  Check,
   Bot,
   User,
   Wrench,
   LineChart,
 } from "lucide-react";
+import MarkdownBubble from "./components/MarkdownBubble";
+import InsightCard, { Insight } from "./components/InsightCard";
+import InsightCardSkeleton from "./components/InsightCardSkeleton";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  insight?: Insight;
   timestamp: string;
+}
+
+const NON_ANALYTICAL_SPEC_IDS = new Set(["conversational", "abusive_deescalation", "out_of_scope", "none"]);
+
+function mapInsightResponse(json: any): Insight {
+  return {
+    question: json.question ?? "",
+    executiveSummary: json.executive_summary ?? "",
+    confidence: json.confidence ?? { score: 0, rationale: "" },
+    knownIssueMatch: json.known_issue_match ?? false,
+    matchedKnownIssue: json.matched_known_issue ?? "",
+    cuts: json.cuts ?? {},
+    views: json.views ?? { metric_deltas: [] },
+    sqlQueries: json.sql_queries ?? [],
+    specId: json.spec_id ?? "",
+    traceId: json.trace_id ?? "",
+    traceUrl: json.trace_url ?? "",
+  };
 }
 
 const AGENT_MODELS = [
@@ -103,6 +120,46 @@ export default function ChatPage() {
 
     setMessages([...newMessages, placeholderAssistant]);
 
+    if (selectedModel === "atlys-analyst") {
+      try {
+        const res = await fetch("/api/analyze/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: query, spec_id: "chat" }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Server returned ${res.status}`);
+        }
+
+        const json = await res.json();
+        const insight = mapInsightResponse(json);
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? { ...msg, content: json.answer_md || insight.executiveSummary, insight }
+              : msg
+          )
+        );
+      } catch (err: any) {
+        console.error("Error fetching analyst insight:", err);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? {
+                  ...msg,
+                  content: `⚠️ **Error connecting to InsightMesh backend:** ${err.message}\n\nPlease check that the backend service is reachable.`,
+                }
+              : msg
+          )
+        );
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -130,7 +187,6 @@ export default function ChatPage() {
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        // Parse SSE chunk (or plain text)
         const lines = chunk.split("\n");
         for (const line of lines) {
           if (line.startsWith("data: ")) {
@@ -185,7 +241,6 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-screen max-w-5xl mx-auto w-full px-4 sm:px-6">
-      {/* Top Header */}
       <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between py-4 border-b border-slate-800 gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 shadow-lg shadow-blue-500/20">
@@ -199,7 +254,6 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Model Selector & Status */}
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-initial">
             <select
@@ -222,7 +276,6 @@ export default function ChatPage() {
         </div>
       </header>
 
-      {/* Active Agent Banner */}
       <div className="py-2.5 px-3.5 my-3 rounded-lg bg-slate-900/60 border border-slate-800/80 flex items-center justify-between text-xs text-slate-300">
         <div className="flex items-center gap-2">
           <ActiveIcon className="w-4 h-4 text-blue-400" />
@@ -235,10 +288,11 @@ export default function ChatPage() {
         </span>
       </div>
 
-      {/* Chat Messages */}
       <main className="flex-1 overflow-y-auto space-y-4 py-2 pr-1">
         {messages.map((msg) => {
           const isUser = msg.role === "user";
+          const showInsightCard =
+            !isUser && msg.insight && !NON_ANALYTICAL_SPEC_IDS.has(msg.insight.specId);
           return (
             <div
               key={msg.id}
@@ -250,38 +304,14 @@ export default function ChatPage() {
                 </div>
               )}
 
-              <div
-                className={`group relative max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
-                  isUser
-                    ? "bg-blue-600 text-white rounded-br-none"
-                    : "bg-slate-900 border border-slate-800 text-slate-200 rounded-bl-none"
-                }`}
-              >
-                {!isUser ? (
-                  <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-slate-950 prose-pre:border prose-pre:border-slate-800">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                )}
-
-                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-slate-400">
-                  <span>{msg.timestamp}</span>
-                  {!isUser && msg.content && (
-                    <button
-                      onClick={() => handleCopy(msg.id, msg.content)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 hover:text-slate-200"
-                    >
-                      {copiedId === msg.id ? (
-                        <Check className="w-3 h-3 text-emerald-400" />
-                      ) : (
-                        <Copy className="w-3 h-3" />
-                      )}
-                      <span>{copiedId === msg.id ? "Copied" : "Copy"}</span>
-                    </button>
-                  )}
+              {showInsightCard ? (
+                <div className="max-w-[85%] w-full">
+                  <InsightCard insight={msg.insight!} />
+                  <div className="mt-1 text-[10px] text-slate-500">{msg.timestamp}</div>
                 </div>
-              </div>
+              ) : (
+                <MarkdownBubble msg={msg} isUser={isUser} copiedId={copiedId} onCopy={handleCopy} />
+              )}
 
               {isUser && (
                 <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -292,19 +322,28 @@ export default function ChatPage() {
           );
         })}
 
-        {isLoading && (
-          <div className="flex gap-3 items-center text-xs text-slate-400 py-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-              <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+        {isLoading &&
+          (selectedModel === "atlys-analyst" ? (
+            <div className="flex gap-3 items-start">
+              <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+              </div>
+              <div className="max-w-[85%] w-full">
+                <InsightCardSkeleton />
+              </div>
             </div>
-            <span>Agent is consulting ClickHouse & Gemini 3...</span>
-          </div>
-        )}
+          ) : (
+            <div className="flex gap-3 items-center text-xs text-slate-400 py-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
+                <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+              </div>
+              <span>Agent is consulting ClickHouse & Gemini 3...</span>
+            </div>
+          ))}
 
         <div ref={messagesEndRef} />
       </main>
 
-      {/* Quick Suggestions */}
       {messages.length <= 2 && (
         <div className="py-2">
           <p className="text-[11px] text-slate-400 font-medium mb-1.5">Suggested Prompts:</p>
@@ -328,7 +367,6 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Input Area */}
       <footer className="py-3 border-t border-slate-800">
         <form
           onSubmit={(e) => {
