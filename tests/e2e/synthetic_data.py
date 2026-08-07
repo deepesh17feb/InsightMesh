@@ -229,3 +229,41 @@ def boundary_cases() -> tuple[str, list[dict], dict]:
         "feb_partition": "202602",
     }
     return SPEC_MD_TEMPLATE.format(title="Boundary Cases"), events, expected
+
+
+def out_of_order() -> tuple[str, list[dict], dict]:
+    """5 events with fixed, 10-minutes-apart timestamps, inserted in a
+    deliberately scrambled order (index 2, 0, 4, 1, 3) to simulate
+    late-arriving / backfilled data."""
+    chronological_ids = ["e2e_ooo_t0", "e2e_ooo_t1", "e2e_ooo_t2", "e2e_ooo_t3", "e2e_ooo_t4"]
+    timestamps = [
+        "2026-06-01T00:00:00.000",
+        "2026-06-01T00:10:00.000",
+        "2026-06-01T00:20:00.000",
+        "2026-06-01T00:30:00.000",
+        "2026-06-01T00:40:00.000",
+    ]
+    insertion_order = [2, 0, 4, 1, 3]
+
+    events = []
+    for idx in insertion_order:
+        events.append({
+            "event": "express_checkout_shown",
+            "id": chronological_ids[idx],
+            "timestamp": timestamps[idx],
+            "device_type": "ios",
+            "os": "iOS",
+            "geoip_country_code": "IN",
+            "user_id": f"e2e_ooo_user_{idx}",
+            "application_id": f"e2e_ooo_app_{idx}",
+            "destination": "IN",
+            "eligible": True,
+            "shown_amount": 100.0 + idx,
+            "currency": "INR",
+        })
+
+    expected = {
+        "chronological_ids": chronological_ids,
+        "insertion_order_ids": [chronological_ids[i] for i in insertion_order],
+    }
+    return SPEC_MD_TEMPLATE.format(title="Out Of Order"), events, expected

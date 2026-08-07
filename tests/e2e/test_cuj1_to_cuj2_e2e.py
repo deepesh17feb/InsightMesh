@@ -137,3 +137,21 @@ def test_boundary_cases_survive_round_trip(chdb_only_ch_client, no_pytest_guard,
     )
     assert [str(r["part"]) for r in rows] == [expected["jan_partition"], expected["feb_partition"]]
     assert all(r["c"] == 1 for r in rows)
+
+
+def test_out_of_order_events_query_correctly(chdb_only_ch_client, no_pytest_guard, synthetic_spec):
+    """Events are inserted in a scrambled order relative to their timestamps
+    (simulating late-arriving / backfilled data). A time-ordered CUJ2 query
+    must return them in chronological order regardless of insertion order."""
+    spec_md_text, events, expected = synthetic_data.out_of_order()
+    spec_id, table_name = synthetic_spec("ooo", spec_md_text, events)
+
+    pipeline_helpers.ingest(spec_id, table_name, len(events))
+
+    rows, elapsed = pipeline_helpers.query(
+        f"SELECT id FROM {table_name} ORDER BY timestamp ASC",
+        spec_id=spec_id,
+    )
+    assert elapsed < pipeline_helpers.LATENCY_BUDGET_SECONDS
+    assert [r["id"] for r in rows] == expected["chronological_ids"]
+    assert [r["id"] for r in rows] != expected["insertion_order_ids"]
