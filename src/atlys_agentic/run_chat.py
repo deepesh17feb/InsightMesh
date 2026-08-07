@@ -147,6 +147,7 @@ def analyze_query(req: AnalysisRequest):
         "views": result.get("views", {}),
         "sql_queries": result.get("sql_queries", []),
         "trace_id": result.get("trace_id", ""),
+        "trace_url": result.get("trace_url", ""),
     }
 
 
