@@ -84,6 +84,37 @@ def test_l1_confidence_score_calibration_boundaries():
 # ==============================================================================
 
 
+def test_run_includes_trace_url_captured_during_the_trace():
+    """analysis_flow.run()'s return dict must carry trace_url (not just
+    trace_id) so callers like /api/analyze/query can surface a clickable
+    Langfuse link without reconstructing the URL themselves."""
+    from unittest.mock import MagicMock, patch
+
+    from atlys_agentic import chdb_client, tracing
+    from atlys_agentic.flows import analysis_flow
+
+    chdb_client.init_schema()
+    chdb_client.init_base_context()
+
+    mock_client = MagicMock()
+    mock_client.start_as_current_observation.return_value.__enter__.return_value = MagicMock()
+    mock_client.get_current_trace_id.return_value = "trace-insight-1"
+    mock_client.get_trace_url.return_value = "https://us.cloud.langfuse.com/trace/trace-insight-1"
+
+    tracing._current_trace_id = None
+    tracing._current_trace_url = None
+
+    with patch("atlys_agentic.tracing.client", return_value=mock_client):
+        result = analysis_flow.run(
+            question="What is the conversion rate?",
+            spec_id="01_express_checkout",
+            enable_guardrails=False,
+        )
+
+    assert result["trace_id"] == "trace-insight-1"
+    assert result["trace_url"] == "https://us.cloud.langfuse.com/trace/trace-insight-1"
+
+
 # ==============================================================================
 # LEVEL 4: UNSEEN SPEC GENERALIZATION & CONTEXT PERSISTENCE
 # ==============================================================================

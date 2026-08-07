@@ -680,5 +680,6 @@ def run(
         "spec_id": flow.state.spec_id,
         "table_name": flow.state.table_name,
         "trace_id": flow.state.trace_id,
+        "trace_url": tracing.trace_url() or "",
     }
 
