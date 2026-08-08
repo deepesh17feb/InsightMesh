@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Sparkles,
   Table2,
@@ -105,7 +106,7 @@ export default function InsightCard({ insight }: { insight: Insight }) {
             </span>
           </div>
           <div className="prose prose-invert prose-sm max-w-none text-sm leading-relaxed text-slate-200 prose-p:my-0 prose-p:leading-relaxed">
-            <ReactMarkdown>{insight.executiveSummary}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{insight.executiveSummary}</ReactMarkdown>
           </div>
         </div>
 

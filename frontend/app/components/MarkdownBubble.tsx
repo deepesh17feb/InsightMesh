@@ -2,6 +2,7 @@
 
 import React from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Copy, Check } from "lucide-react";
 
 interface MarkdownBubbleMessage {
@@ -32,7 +33,7 @@ export default function MarkdownBubble({
     >
       {!isUser ? (
         <div className="prose prose-invert prose-sm max-w-none prose-pre:bg-slate-950 prose-pre:border prose-pre:border-slate-800">
-          <ReactMarkdown>{msg.content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
         </div>
       ) : (
         <p className="whitespace-pre-wrap">{msg.content}</p>
