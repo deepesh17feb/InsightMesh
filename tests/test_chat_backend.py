@@ -42,6 +42,69 @@ def test_chat_completions_returns_openai_shaped_response():
     assert kwargs["question"] == "Does Express lift conversion?"
 
 
+def test_analyze_query_endpoint_returns_trace_url():
+    fake_result = {
+        "answer_md": "Express lifts conversion 8% overall.",
+        "executive_summary": "Express lifts conversion 8% overall.",
+        "confidence": {"score": 0.75, "rationale": "r"},
+        "known_issue_match": False,
+        "matched_known_issue": "",
+        "cuts": {"device_type": []},
+        "views": {"metric_deltas": []},
+        "sql_queries": ["SELECT 1"],
+        "spec_id": "01_express_checkout",
+        "trace_id": "trace-42",
+        "trace_url": "https://us.cloud.langfuse.com/trace/trace-42",
+    }
+    with patch("atlys_agentic.run_chat.analysis_flow.run", return_value=fake_result) as mock_run:
+        from fastapi.testclient import TestClient
+        client = TestClient(app)
+        response = client.post(
+            "/api/analyze/query",
+            json={"question": "Does Express lift conversion?", "spec_id": "01_express_checkout"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["trace_url"] == "https://us.cloud.langfuse.com/trace/trace-42"
+    assert body["executive_summary"] == fake_result["executive_summary"]
+    mock_run.assert_called_once()
+
+
+def test_analyze_query_endpoint_returns_backend_spec_id_not_request_spec_id():
+    # Regression test for run_chat.py:140 — the endpoint must return the backend's
+    # own classification (result["spec_id"]), not echo back whatever spec_id the
+    # caller sent. Request sends "chat" (what the frontend always sends in analyst
+    # mode); the backend classifies the question as "conversational". If the
+    # handler ever regresses to `req.spec_id`, this would catch it (unlike the
+    # trace_url test above, whose request and result spec_id happen to match).
+    fake_result = {
+        "answer_md": "Hey there!",
+        "executive_summary": "Hey there!",
+        "confidence": {"score": 0.0, "rationale": "r"},
+        "known_issue_match": False,
+        "matched_known_issue": "",
+        "cuts": {},
+        "views": {"metric_deltas": []},
+        "sql_queries": [],
+        "spec_id": "conversational",
+        "trace_id": "trace-99",
+        "trace_url": "https://us.cloud.langfuse.com/trace/trace-99",
+    }
+    with patch("atlys_agentic.run_chat.analysis_flow.run", return_value=fake_result) as mock_run:
+        from fastapi.testclient import TestClient
+        client = TestClient(app)
+        response = client.post(
+            "/api/analyze/query",
+            json={"question": "hi there", "spec_id": "chat"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["spec_id"] == "conversational"
+    mock_run.assert_called_once()
+
+
 def test_healthz_endpoint():
     try:
         from fastapi.testclient import TestClient

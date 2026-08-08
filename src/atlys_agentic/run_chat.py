@@ -137,7 +137,7 @@ def analyze_query(req: AnalysisRequest):
     return {
         "status": "success",
         "question": req.question,
-        "spec_id": req.spec_id,
+        "spec_id": result.get("spec_id", req.spec_id),
         "executive_summary": result.get("executive_summary", ""),
         "answer_md": result.get("answer_md", ""),
         "confidence": result.get("confidence", {}),
@@ -147,6 +147,7 @@ def analyze_query(req: AnalysisRequest):
         "views": result.get("views", {}),
         "sql_queries": result.get("sql_queries", []),
         "trace_id": result.get("trace_id", ""),
+        "trace_url": result.get("trace_url", ""),
     }
 
 
