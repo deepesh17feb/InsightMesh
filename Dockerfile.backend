@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml requirements.txt README.md /app/
 COPY src/ /app/src/
 COPY ["problem statment/", "/app/problem statment/"]
-COPY base_context.md /app/base_context.md
 
 # Install python dependencies in editable mode
 RUN pip install --no-cache-dir --upgrade pip && \
