@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Callable
 
@@ -6,6 +7,8 @@ from pydantic import BaseModel
 from crewai.flow.flow import Flow as CrewAIFlow, listen, router, start
 
 from atlys_agentic import agents, paths, prompts, tools, tracing
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionState(BaseModel):
@@ -93,7 +96,7 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
                     run_mode=mode,
                 )
             except Exception:
-                pass
+                logger.warning("context_librarian consult_context LLM call failed", exc_info=True)
 
         # 2. Instrumentation Engineer infers production ClickHouse DDL & Materialized View using Context Librarian's catalog briefing
         self.state.ddl = tools.Tool_Infer_Schema(ndjson_path, spec_text, self.state.table_name)
@@ -159,7 +162,7 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
                     run_mode=mode,
                 )
             except Exception:
-                pass
+                logger.warning("instrumentation_engineer schema_design LLM call failed", exc_info=True)
 
         tracing.span(
             self.state.trace_id,
@@ -236,7 +239,7 @@ class IngestionFlow(CrewAIFlow[IngestionState]):
                     run_mode="dry_run" if self.state.dry_run else "live_run",
                 )
             except Exception:
-                pass
+                logger.warning("context_librarian context_audit LLM call failed", exc_info=True)
 
         tracing.span(
             self.state.trace_id,

@@ -1,3 +1,4 @@
+import logging
 import os
 from pydantic import BaseModel
 
@@ -5,6 +6,7 @@ from crewai.flow.flow import Flow as CrewAIFlow, listen, router, start
 
 from atlys_agentic import agents, chdb_client, prompts, tools, tracing
 
+logger = logging.getLogger(__name__)
 
 _MANDATORY_CUT_DIMENSIONS = ("device_type", "geoip_country_code", "destination")
 _STOPWORDS = {"the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "has", "have", "what", "is", "there", "an", "on"}
@@ -32,7 +34,7 @@ def _discover_cataloged_specs() -> list[str]:
                 if entry not in catalog:
                     catalog.append(entry)
     except Exception:
-        pass
+        logger.debug("schema_registry lookup failed in _discover_cataloged_specs", exc_info=True)
 
     # 2. Secondary lookup: query chDB business_context for documented domain sections
     try:
@@ -42,7 +44,7 @@ def _discover_cataloged_specs() -> list[str]:
             if k and k not in catalog:
                 catalog.append(k)
     except Exception:
-        pass
+        logger.debug("business_context lookup failed in _discover_cataloged_specs", exc_info=True)
 
     # 3. Dynamic bootstrap fallback: inspect cataloged specs directory if chDB is uninitialized
     if not catalog:
@@ -51,7 +53,7 @@ def _discover_cataloged_specs() -> list[str]:
             if paths.SPECS_DIR.exists():
                 catalog.extend([p.name for p in paths.SPECS_DIR.iterdir() if p.is_dir()])
         except Exception:
-            pass
+            logger.debug("filesystem fallback failed in _discover_cataloged_specs", exc_info=True)
 
     return sorted(set(catalog))
 
@@ -92,7 +94,7 @@ def classify_question_intent_with_llm(question: str) -> dict:
                 "response": data.get("direct_response"),
             }
         except Exception:
-            pass
+            logger.warning("LLM intent classification failed, falling back to heuristic", exc_info=True)
 
     return _heuristic_classify_intent(q_stripped)
 
@@ -192,7 +194,7 @@ def infer_domain_from_question(question: str) -> tuple[str, str]:
             if t and t.lower() in q_lower:
                 return s or "01_express_checkout", t
     except Exception:
-        pass
+        logger.debug("schema_registry lookup failed in infer_domain_from_question", exc_info=True)
 
     return "01_express_checkout", "express_checkout"
 
@@ -280,7 +282,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                     run_mode="live_run",
                 )
             except Exception:
-                pass
+                logger.warning("context_librarian JIT retrieval LLM call failed", exc_info=True)
 
         tracing.span(
             self.state.trace_id,
@@ -317,6 +319,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                 result = tools.Tool_Analytics_Compute(sql)
                 cut_rows = result.get("rows", [])
             except Exception:
+                logger.debug("Tool_Analytics_Compute failed for cut %r, trying chdb file fallback", dim, exc_info=True)
                 # Live fallback directly on events.ndjson via chDB if table not yet loaded in ClickHouse Cloud
                 if ndjson_path.exists():
                     try:
@@ -332,7 +335,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                             cut_rows = parsed.get("data", [])
                             self.state.sql_queries.append(file_sql)
                     except Exception:
-                        pass
+                        logger.debug("chdb file fallback failed for cut %r", dim, exc_info=True)
 
                 if not cut_rows:
                     fallback_sql = f"{sql_clean} /* cut: {dim} */"
@@ -340,6 +343,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                         res_fb = tools.Tool_Analytics_Compute(fallback_sql)
                         cut_rows = res_fb.get("rows", [])
                     except Exception:
+                        logger.debug("final analytics fallback failed for cut %r, returning empty", dim, exc_info=True)
                         cut_rows = []
 
             self.state.cuts[dim] = cut_rows
@@ -360,6 +364,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
             cols_meta = json.loads(desc_raw).get("data", []) if desc_raw.strip() else []
             return {c.get("name") for c in cols_meta}
         except Exception:
+            logger.debug("column discovery failed for %s", ndjson_path, exc_info=True)
             return set()
 
     def _compute_live_views(self, ndjson_path, col_names: set[str] | None = None):
@@ -437,7 +442,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                     self.state.sql_queries.append(sum_sql)
 
             except Exception:
-                pass
+                logger.warning("_compute_live_views chdb query failed for %s", ndjson_path, exc_info=True)
 
         # Build dynamic metric deltas strictly from real data
         top_segment = waterfall_data[0]["segment"] if waterfall_data else "Primary Segment"
@@ -544,7 +549,9 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                     run_mode="live_run",
                 )
             except Exception:
-                pass
+                # This is exactly where the LLM-signature bug hid for a long
+                # time (call args didn't match prompts.py) — keep this loud.
+                logger.warning("product_analyst LLM synthesis failed, falling back to templated summary", exc_info=True)
 
         self.state.answer_md = (
             f"### 🔍 Product Analyst Diagnosis\n\n"

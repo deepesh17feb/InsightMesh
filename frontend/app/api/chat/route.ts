@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { BACKEND_URL } from "../../backend-url";
 
 export const maxDuration = 60;
 
@@ -6,11 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const { messages, model } = await req.json();
 
-    const backendUrl =
-      process.env.INSIGHTMESH_BACKEND_URL ||
-      "https://insightmesh-backend.onrender.com";
-
-    const response = await fetch(`${backendUrl}/v1/chat/completions`, {
+    const response = await fetch(`${BACKEND_URL}/v1/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

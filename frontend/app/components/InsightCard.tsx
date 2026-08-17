@@ -81,9 +81,13 @@ export default function InsightCard({ insight }: { insight: Insight }) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   const handleCopySql = (idx: number, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedIdx(idx);
-    setTimeout(() => setCopiedIdx(null), 2000);
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopiedIdx(idx);
+        setTimeout(() => setCopiedIdx(null), 2000);
+      },
+      (err) => console.error("Clipboard write failed:", err)
+    );
   };
 
   const cutEntries = Object.entries(insight.cuts || {}).filter(([, rows]) => rows && rows.length > 0);
@@ -110,10 +114,17 @@ export default function InsightCard({ insight }: { insight: Insight }) {
           </div>
         </div>
 
-        {hasFacts && (
-          <div className="border-t border-slate-800 pt-4">
-            <SectionEyebrow icon={Table2}>Facts</SectionEyebrow>
-            {metricDeltas.length > 0 && (
+        <div className="border-t border-slate-800 pt-4">
+          <SectionEyebrow icon={Table2}>Facts</SectionEyebrow>
+          {!hasFacts && (
+            <p className="text-xs text-slate-500 italic">
+              No live data available for this query — the table may not have this
+              dimension, or the live query didn't return rows.
+            </p>
+          )}
+          {hasFacts && (
+            <>
+              {metricDeltas.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                 {metricDeltas.map((m, idx) => (
                   <div key={idx} className="rounded-lg bg-slate-950/60 border border-slate-800 px-2.5 py-2">
@@ -159,8 +170,9 @@ export default function InsightCard({ insight }: { insight: Insight }) {
                 </div>
               );
             })}
-          </div>
-        )}
+            </>
+          )}
+        </div>
 
         {sqlQueries.length > 0 && (
           <div className="border-t border-slate-800 pt-4">
