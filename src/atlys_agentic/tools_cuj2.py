@@ -11,6 +11,7 @@ from atlys_agentic.tools_common import (
     _columns_from_ddl,
     _flatten,
     _load_events,
+    _safe_identifier,
 )
 from atlys_agentic.tools_cuj1 import Tool_Infer_Table_Name, Tool_Write_Table_Semantics
 
@@ -192,6 +193,10 @@ def Tool_Load_Table_Semantics(candidate_tables: list[str]) -> dict:
     """Phase 1b: Context Agent loads columns + version, metric formulas, caveats, K1-K7, changelog, prior insights."""
     candidates_meta = {}
     for tbl in candidate_tables:
+        try:
+            _safe_identifier(tbl)
+        except ValueError:
+            continue
         reg_rows = chdb_client.run(
             f'SELECT "table" as table_name, version, ddl, columns_json, spec_id FROM schema_registry WHERE "table" = \'{tbl}\' ORDER BY version DESC LIMIT 1'
         )
@@ -252,9 +257,16 @@ def Tool_Load_Table_Semantics(candidate_tables: list[str]) -> dict:
                 metrics.append(f"{key}: {defn}")
 
         # Check prior insights for this table
-        prior_insights = chdb_client.run(
-            f"SELECT finding_key, spec_id, question, confidence, answer_md, created_at FROM insights WHERE finding_key LIKE '{tbl}::%' OR spec_id = '{spec_id}' ORDER BY created_at DESC LIMIT 3"
-        )
+        try:
+            prior_insights = chdb_client.run(
+                f"SELECT finding_key, spec_id, question, confidence, answer_md, created_at FROM insights "
+                f"WHERE finding_key LIKE '{tbl}::%' OR spec_id = '{_safe_identifier(spec_id)}' ORDER BY created_at DESC LIMIT 3"
+            )
+        except ValueError:
+            prior_insights = chdb_client.run(
+                f"SELECT finding_key, spec_id, question, confidence, answer_md, created_at FROM insights "
+                f"WHERE finding_key LIKE '{tbl}::%' ORDER BY created_at DESC LIMIT 3"
+            )
 
         candidates_meta[tbl] = {
             "table_name": tbl,

@@ -173,6 +173,16 @@ def test_analytics_compute_rejects_non_select():
         tools.Tool_Analytics_Compute("INSERT INTO x VALUES (1)")
 
 
+def test_safe_identifier_accepts_bare_names():
+    assert tools._safe_identifier("express_checkout") == "express_checkout"
+
+
+def test_safe_identifier_rejects_injection_payloads():
+    for payload in ["x'; DROP TABLE schema_registry; --", "x OR 1=1", "", None]:
+        with pytest.raises(ValueError):
+            tools._safe_identifier(payload)
+
+
 def test_analytics_compute_returns_json_rows():
     from unittest.mock import patch
     with patch("atlys_agentic.tools.ch_client.select", return_value=[{"c": 42}]) as mock_select:

@@ -93,6 +93,13 @@ def _columns_from_ddl(ddl: str) -> list[str]:
     return cols
 
 
+def _safe_identifier(name: str) -> str:
+    """Reject anything that isn't a bare SQL identifier before it's spliced into a query string."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name or ""):
+        raise ValueError(f"Unsafe identifier: {name!r}")
+    return name
+
+
 def _assert_select_only(sql: str) -> None:
     """Assert query is strictly SELECT-only per docs/CUJ2.md §2.8."""
     sql_clean = (sql or "").strip().rstrip(";").strip()

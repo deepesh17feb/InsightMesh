@@ -293,9 +293,17 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
     def run_multi_cut_analysis(self):
         from atlys_agentic import paths
         ndjson_path = paths.events_ndjson(self.state.spec_id)
+        col_names = self._discover_columns(ndjson_path)
 
         # 1. Execute live dimension cuts
         for dim in _MANDATORY_CUT_DIMENSIONS:
+            # Skip dimensions we positively know aren't on this table instead of
+            # running a doomed query and back-filling with a fabricated row.
+            if col_names and dim not in col_names:
+                self.state.cuts[dim] = []
+                tracing.span(self.state.trace_id, f"cut_{dim}", {"skipped": "column_not_present"}, {"rows": 0})
+                continue
+
             sql_clean = self.state.base_sql.strip().rstrip(";")
             if "group by" in sql_clean.lower():
                 sql = f"{sql_clean} /* cut: {dim} */"
@@ -332,29 +340,41 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                         res_fb = tools.Tool_Analytics_Compute(fallback_sql)
                         cut_rows = res_fb.get("rows", [])
                     except Exception:
-                        cut_rows = [{"dim": dim, "events": 100}]
+                        cut_rows = []
 
             self.state.cuts[dim] = cut_rows
             tracing.span(self.state.trace_id, f"cut_{dim}", {"select_sql": sql}, {"rows": len(cut_rows)})
 
         # 2. Query Live Time Series Trend & Segment Waterfall from Real Events
-        self._compute_live_views(ndjson_path)
+        self._compute_live_views(ndjson_path, col_names)
 
-    def _compute_live_views(self, ndjson_path):
+    def _discover_columns(self, ndjson_path) -> set[str]:
+        """Best-effort column discovery for the spec's local event sample.
+        Empty set means "unknown" (e.g. file not present locally), not
+        "table has no columns" — callers must not treat it as a negative."""
+        if not (ndjson_path and ndjson_path.exists()):
+            return set()
+        try:
+            import chdb, json
+            desc_raw = str(chdb.query(f"DESCRIBE file('{ndjson_path}', 'JSONEachRow')", "JSON"))
+            cols_meta = json.loads(desc_raw).get("data", []) if desc_raw.strip() else []
+            return {c.get("name") for c in cols_meta}
+        except Exception:
+            return set()
+
+    def _compute_live_views(self, ndjson_path, col_names: set[str] | None = None):
         """Extract live real-time views from ClickHouse Cloud or events.ndjson dynamically."""
         trend_data = []
         waterfall_data = []
         total_events = 0
         total_users = 0
 
+        if col_names is None:
+            col_names = self._discover_columns(ndjson_path)
+
         if ndjson_path and ndjson_path.exists():
             try:
                 import chdb, json
-
-                # 1. Discover available columns in event stream
-                desc_raw = str(chdb.query(f"DESCRIBE file('{ndjson_path}', 'JSONEachRow')", "JSON"))
-                cols_meta = json.loads(desc_raw).get("data", []) if desc_raw.strip() else []
-                col_names = {c.get("name") for c in cols_meta}
 
                 # Dynamically choose success expression
                 if "otp_success" in col_names:
@@ -424,18 +444,12 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
         top_dropoff = waterfall_data[0]["dropoff_pct"] if waterfall_data else 0.0
 
         self.state.views = {
-            "conversion_trend": trend_data or [
-                {"date": "2026-07-28", "baseline": 69.1, "observed": 52.4},
-                {"date": "2026-07-29", "baseline": 68.8, "observed": 44.1},
-                {"date": "2026-07-30", "baseline": 69.4, "observed": 43.8},
-                {"date": "2026-07-31", "baseline": 69.0, "observed": 43.5},
-            ],
-            "segment_waterfall": waterfall_data or [
-                {"segment": "iOS", "volume": 2302, "dropoff_pct": 3.0},
-                {"segment": "Android", "volume": 1855, "dropoff_pct": 0.0},
-                {"segment": "Web User B2C", "volume": 1043, "dropoff_pct": 0.0},
-                {"segment": "Desktop", "volume": 307, "dropoff_pct": 0.0},
-            ],
+            # ponytail: no live data means an empty series, not a fabricated
+            # one — the frontend currently doesn't render conversion_trend or
+            # segment_waterfall at all, so this was dead weight masquerading
+            # as real numbers. Add a "no live data" UI state if these get wired up.
+            "conversion_trend": trend_data,
+            "segment_waterfall": waterfall_data,
             "metric_deltas": [
                 {"metric": "Live Events Scanned", "baseline": "N/A", "observed": f"{total_events:,}" if total_events else "—", "delta": "Live Sample N", "impact": "Verified Real Data"},
                 {"metric": "Unique Active Users", "baseline": "N/A", "observed": f"{total_users:,}" if total_users else "—", "delta": "Distinct Users", "impact": "Verified Real Data"},

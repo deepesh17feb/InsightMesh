@@ -6,10 +6,11 @@ and AnalysisFlow (CUJ 2).
 from __future__ import annotations
 
 import json
+import os
 import time
 import uuid
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -61,6 +62,19 @@ class AnalysisRequest(BaseModel):
 _DEFAULT_BASE_SQL = "SELECT * FROM purchase_completed"
 
 
+def _enforce_api_key(x_api_key: str | None) -> None:
+    """Guards mutating actions with a shared-secret header. No-op when
+    INSIGHTMESH_API_KEY is unset, so local/dev usage is unaffected — set the
+    env var in any deployment reachable from the public internet."""
+    expected = os.environ.get("INSIGHTMESH_API_KEY", "").strip()
+    if expected and x_api_key != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+
+
+def _require_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    _enforce_api_key(x_api_key)
+
+
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
@@ -107,7 +121,7 @@ def propose_ingestion(req: IngestionRequest):
     }
 
 
-@app.post("/api/ingest/approve")
+@app.post("/api/ingest/approve", dependencies=[Depends(_require_api_key)])
 def approve_ingestion(req: IngestionRequest):
     chdb_client.init_schema()
     chdb_client.init_base_context()
@@ -152,7 +166,7 @@ def analyze_query(req: AnalysisRequest):
 
 
 @app.post("/v1/chat/completions")
-def chat_completions(req: ChatCompletionRequest):
+def chat_completions(req: ChatCompletionRequest, x_api_key: str | None = Header(default=None)):
     messages_list = [{"role": m.role, "content": m.content} for m in req.messages]
     intent, context_data = conversational_ingestion.detect_chat_intent(messages_list, model=req.model)
     question = req.messages[-1].content
@@ -177,6 +191,7 @@ def chat_completions(req: ChatCompletionRequest):
                 folder = context_data.get("folder_path", "problem statment/specs")
                 content = conversational_ingestion.format_batch_proposal_card(folder)
             elif intent == "HITL_APPROVE":
+                _enforce_api_key(x_api_key)
                 table_hint = context_data.get("table_hint")
                 content = conversational_ingestion.handle_hitl_deployment(
                     table_name=table_hint,

@@ -1,6 +1,23 @@
 from unittest.mock import patch
 
-from atlys_agentic.run_chat import app
+import pytest
+from fastapi import HTTPException
+
+from atlys_agentic.run_chat import _enforce_api_key, app
+
+
+def test_enforce_api_key_noop_when_unset(monkeypatch):
+    monkeypatch.delenv("INSIGHTMESH_API_KEY", raising=False)
+    _enforce_api_key(None)  # must not raise
+
+
+def test_enforce_api_key_rejects_missing_or_wrong_key(monkeypatch):
+    monkeypatch.setenv("INSIGHTMESH_API_KEY", "secret")
+    with pytest.raises(HTTPException):
+        _enforce_api_key(None)
+    with pytest.raises(HTTPException):
+        _enforce_api_key("wrong")
+    _enforce_api_key("secret")  # must not raise
 
 
 def test_chat_completions_returns_openai_shaped_response():
