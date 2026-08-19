@@ -5,6 +5,7 @@ and AnalysisFlow (CUJ 2).
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import time
@@ -67,7 +68,7 @@ def _enforce_api_key(x_api_key: str | None) -> None:
     INSIGHTMESH_API_KEY is unset, so local/dev usage is unaffected — set the
     env var in any deployment reachable from the public internet."""
     expected = os.environ.get("INSIGHTMESH_API_KEY", "").strip()
-    if expected and x_api_key != expected:
+    if expected and not hmac.compare_digest(x_api_key or "", expected):
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
 
 

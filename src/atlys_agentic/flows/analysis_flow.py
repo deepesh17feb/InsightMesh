@@ -449,13 +449,23 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
         # never got a live total, so the frontend's no-data state is reachable.
         metric_deltas = []
         if total_events > 0:
-            top_segment = waterfall_data[0]["segment"] if waterfall_data else "Primary Segment"
-            top_dropoff = waterfall_data[0]["dropoff_pct"] if waterfall_data else 0.0
             metric_deltas = [
                 {"metric": "Live Events Scanned", "baseline": "N/A", "observed": f"{total_events:,}", "delta": "Live Sample N", "impact": "Verified Real Data"},
                 {"metric": "Unique Active Users", "baseline": "N/A", "observed": f"{total_users:,}" if total_users else "—", "delta": "Distinct Users", "impact": "Verified Real Data"},
-                {"metric": f"{top_segment} Dropoff Rate", "baseline": "0.0%", "observed": f"{top_dropoff}%", "delta": f"+{top_dropoff} pp", "impact": "Cohort Divergence" if top_dropoff > 0 else "Baseline Normal"},
             ]
+            # Only a real fact if we actually got a segment breakdown — a
+            # missing waterfall must not become a fabricated "Primary
+            # Segment 0.0%" row (the totals check above doesn't cover this).
+            if waterfall_data:
+                top = waterfall_data[0]
+                top_dropoff = top["dropoff_pct"]
+                metric_deltas.append({
+                    "metric": f"{top['segment']} Dropoff Rate",
+                    "baseline": "0.0%",
+                    "observed": f"{top_dropoff}%",
+                    "delta": f"+{top_dropoff} pp",
+                    "impact": "Cohort Divergence" if top_dropoff > 0 else "Baseline Normal",
+                })
 
         self.state.views = {
             # ponytail: no live data means an empty series, not a fabricated
@@ -490,11 +500,16 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
 
     def _score_and_write(self, known_issue_match: bool):
         sample_size = sum(len(rows) for rows in self.state.cuts.values())
+        # Count cuts that actually returned rows, not just attempted keys —
+        # self.state.cuts[dim] is now populated with [] for skipped/failed
+        # cuts, so `len(cuts) == len(_MANDATORY_CUT_DIMENSIONS)` no longer
+        # distinguishes "all cuts had data" from "all cuts came back empty".
+        non_empty_cuts = sum(1 for rows in self.state.cuts.values() if rows)
         self.state.confidence = tools.Tool_Score_Confidence(
             sample_size=max(sample_size, 1),
             effect_size_pct=15.0,
             known_issue_match=known_issue_match,
-            cut_consistency=1.0 if len(self.state.cuts) == len(_MANDATORY_CUT_DIMENSIONS) else 0.5,
+            cut_consistency=non_empty_cuts / max(1, len(_MANDATORY_CUT_DIMENSIONS)),
         )
         issue_note = (
             f" This directly correlates with known issue [{self.state.matched_known_issue}] logged in the business context repository."
