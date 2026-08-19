@@ -183,6 +183,37 @@ def test_safe_identifier_rejects_injection_payloads():
             tools._safe_identifier(payload)
 
 
+def test_safe_sql_literal_escapes_quotes_without_rejecting_valid_spec_ids():
+    # Spec IDs like "01_express_checkout" are valid string literals but not
+    # valid bare identifiers (leading digit) — _safe_sql_literal must accept
+    # them, unlike _safe_identifier.
+    assert tools._safe_sql_literal("01_express_checkout") == "01_express_checkout"
+    assert tools._safe_sql_literal("o'brien") == "o''brien"
+    assert tools._safe_sql_literal(None) == ""
+
+
+def test_load_table_semantics_keeps_spec_id_filter_for_numbered_specs():
+    """Regression: numbered spec IDs (e.g. "01_express_checkout") were run
+    through the bare-identifier validator, which rejects leading digits and
+    silently dropped the `OR spec_id = ...` clause from the prior-insights
+    lookup. spec_id is a quoted string literal here, not an identifier."""
+    from unittest.mock import patch
+
+    reg_row = {
+        "table_name": "express_checkout",
+        "version": 1,
+        "ddl": "",
+        "columns_json": json.dumps(["user_id", "device_type"]),
+        "spec_id": "01_express_checkout",
+    }
+    with patch("atlys_agentic.tools_cuj2.chdb_client.run") as mock_run:
+        mock_run.side_effect = [[reg_row], [], []]
+        tools.Tool_Load_Table_Semantics(["express_checkout"])
+
+    prior_insights_query = mock_run.call_args_list[-1].args[0]
+    assert "spec_id = '01_express_checkout'" in prior_insights_query
+
+
 def test_analytics_compute_returns_json_rows():
     from unittest.mock import patch
     with patch("atlys_agentic.tools.ch_client.select", return_value=[{"c": 42}]) as mock_select:

@@ -12,6 +12,15 @@ from atlys_agentic.tools_common import cosine_distance
 # LEVEL 1: INVARIANTS, VECTOR MATH & VALIDATION SAFETY
 # ==============================================================================
 
+def test_compute_live_views_returns_no_metric_deltas_without_live_totals():
+    """No ndjson/live data => metric_deltas must be empty, not placeholder
+    rows ("Primary Segment", "0.0%") — those defeated InsightCard's
+    no-live-data state because it treats any metric delta as a fact."""
+    flow = AnalysisFlow()
+    flow._compute_live_views(None, set())
+    assert flow.state.views["metric_deltas"] == []
+
+
 def test_l1_cosine_distance_properties():
     """Verify vector distance properties: identical vectors=0.0, orthogonal=1.0, opposite=2.0."""
     v1 = [1.0, 0.0, 0.0]

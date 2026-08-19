@@ -444,9 +444,18 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
             except Exception:
                 logger.warning("_compute_live_views chdb query failed for %s", ndjson_path, exc_info=True)
 
-        # Build dynamic metric deltas strictly from real data
-        top_segment = waterfall_data[0]["segment"] if waterfall_data else "Primary Segment"
-        top_dropoff = waterfall_data[0]["dropoff_pct"] if waterfall_data else 0.0
+        # Build dynamic metric deltas strictly from real data — emit nothing
+        # rather than placeholder rows ("Primary Segment", "0.0%") when we
+        # never got a live total, so the frontend's no-data state is reachable.
+        metric_deltas = []
+        if total_events > 0:
+            top_segment = waterfall_data[0]["segment"] if waterfall_data else "Primary Segment"
+            top_dropoff = waterfall_data[0]["dropoff_pct"] if waterfall_data else 0.0
+            metric_deltas = [
+                {"metric": "Live Events Scanned", "baseline": "N/A", "observed": f"{total_events:,}", "delta": "Live Sample N", "impact": "Verified Real Data"},
+                {"metric": "Unique Active Users", "baseline": "N/A", "observed": f"{total_users:,}" if total_users else "—", "delta": "Distinct Users", "impact": "Verified Real Data"},
+                {"metric": f"{top_segment} Dropoff Rate", "baseline": "0.0%", "observed": f"{top_dropoff}%", "delta": f"+{top_dropoff} pp", "impact": "Cohort Divergence" if top_dropoff > 0 else "Baseline Normal"},
+            ]
 
         self.state.views = {
             # ponytail: no live data means an empty series, not a fabricated
@@ -455,11 +464,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
             # as real numbers. Add a "no live data" UI state if these get wired up.
             "conversion_trend": trend_data,
             "segment_waterfall": waterfall_data,
-            "metric_deltas": [
-                {"metric": "Live Events Scanned", "baseline": "N/A", "observed": f"{total_events:,}" if total_events else "—", "delta": "Live Sample N", "impact": "Verified Real Data"},
-                {"metric": "Unique Active Users", "baseline": "N/A", "observed": f"{total_users:,}" if total_users else "—", "delta": "Distinct Users", "impact": "Verified Real Data"},
-                {"metric": f"{top_segment} Dropoff Rate", "baseline": "0.0%", "observed": f"{top_dropoff}%", "delta": f"+{top_dropoff} pp", "impact": "Cohort Divergence" if top_dropoff > 0 else "Baseline Normal"},
-            ],
+            "metric_deltas": metric_deltas,
         }
 
     @router(run_multi_cut_analysis)
