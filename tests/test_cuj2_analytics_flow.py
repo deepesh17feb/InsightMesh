@@ -12,6 +12,74 @@ from atlys_agentic.tools_common import cosine_distance
 # LEVEL 1: INVARIANTS, VECTOR MATH & VALIDATION SAFETY
 # ==============================================================================
 
+def test_compute_live_views_returns_no_metric_deltas_without_live_totals():
+    """No ndjson/live data => metric_deltas must be empty, not placeholder
+    rows ("Primary Segment", "0.0%") — those defeated InsightCard's
+    no-live-data state because it treats any metric delta as a fact."""
+    flow = AnalysisFlow()
+    flow._compute_live_views(None, set())
+    assert flow.state.views["metric_deltas"] == []
+
+
+def test_compute_live_views_omits_dropoff_metric_when_waterfall_empty(tmp_path):
+    """A live total with an empty segment breakdown (two independent chdb
+    queries; one can return rows while the other doesn't) must not produce
+    a fabricated "Primary Segment 0.0%" dropoff row."""
+    from unittest.mock import patch
+
+    ndjson_path = tmp_path / "events.ndjson"
+    ndjson_path.write_text('{"timestamp": "2026-01-01T00:00:00", "user_id": "u1"}\n')
+
+    def fake_query(sql, _fmt):
+        if "AS segment" in sql:
+            return '{"data": []}'
+        if "total_events" in sql:
+            return '{"data": [{"total_events": 500, "total_users": 300}]}'
+        return '{"data": []}'
+
+    flow = AnalysisFlow()
+    with patch("chdb.query", side_effect=fake_query):
+        flow._compute_live_views(ndjson_path, {"timestamp", "user_id"})
+
+    metrics = flow.state.views["metric_deltas"]
+    assert metrics, "real totals should still produce metric deltas"
+    assert all("Dropoff" not in m["metric"] for m in metrics)
+
+
+def test_cut_consistency_reflects_non_empty_cuts_not_just_populated_keys():
+    """cuts[dim] = [] for skipped/failed dims must not count as "consistent"
+    just because the key exists — the confidence component should scale
+    with cuts that actually returned rows."""
+    from unittest.mock import MagicMock, patch
+
+    from atlys_agentic import chdb_client, tracing
+
+    chdb_client.init_schema()
+    chdb_client.init_base_context()
+
+    mock_client = MagicMock()
+    mock_client.start_as_current_observation.return_value.__enter__.return_value = MagicMock()
+    mock_client.get_current_trace_id.return_value = "trace-cc-1"
+    mock_client.get_trace_url.return_value = "https://us.cloud.langfuse.com/trace/trace-cc-1"
+
+    flow = AnalysisFlow()
+    flow.state.question = "test"
+    flow.state.spec_id = "01_express_checkout"
+    flow.state.table_name = "express_checkout"
+    flow.state.trace_id = "trace-cc-1"
+    flow.state.cuts = {
+        "device_type": [{"device_type": "ios", "events": 10}],
+        "geoip_country_code": [],
+        "destination": [],
+    }
+
+    with patch("atlys_agentic.tracing.client", return_value=mock_client):
+        flow._score_and_write(known_issue_match=False)
+
+    # Only 1 of 3 mandatory dims had data, so cut_consistency = 1/3, not 1.0.
+    assert flow.state.confidence["cut_consistency_component"] == pytest.approx(0.15 * (1 / 3), abs=1e-3)
+
+
 def test_l1_cosine_distance_properties():
     """Verify vector distance properties: identical vectors=0.0, orthogonal=1.0, opposite=2.0."""
     v1 = [1.0, 0.0, 0.0]

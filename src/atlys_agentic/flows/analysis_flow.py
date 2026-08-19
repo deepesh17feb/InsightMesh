@@ -1,3 +1,4 @@
+import logging
 import os
 from pydantic import BaseModel
 
@@ -5,6 +6,7 @@ from crewai.flow.flow import Flow as CrewAIFlow, listen, router, start
 
 from atlys_agentic import agents, chdb_client, prompts, tools, tracing
 
+logger = logging.getLogger(__name__)
 
 _MANDATORY_CUT_DIMENSIONS = ("device_type", "geoip_country_code", "destination")
 _STOPWORDS = {"the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "has", "have", "what", "is", "there", "an", "on"}
@@ -32,7 +34,7 @@ def _discover_cataloged_specs() -> list[str]:
                 if entry not in catalog:
                     catalog.append(entry)
     except Exception:
-        pass
+        logger.debug("schema_registry lookup failed in _discover_cataloged_specs", exc_info=True)
 
     # 2. Secondary lookup: query chDB business_context for documented domain sections
     try:
@@ -42,7 +44,7 @@ def _discover_cataloged_specs() -> list[str]:
             if k and k not in catalog:
                 catalog.append(k)
     except Exception:
-        pass
+        logger.debug("business_context lookup failed in _discover_cataloged_specs", exc_info=True)
 
     # 3. Dynamic bootstrap fallback: inspect cataloged specs directory if chDB is uninitialized
     if not catalog:
@@ -51,7 +53,7 @@ def _discover_cataloged_specs() -> list[str]:
             if paths.SPECS_DIR.exists():
                 catalog.extend([p.name for p in paths.SPECS_DIR.iterdir() if p.is_dir()])
         except Exception:
-            pass
+            logger.debug("filesystem fallback failed in _discover_cataloged_specs", exc_info=True)
 
     return sorted(set(catalog))
 
@@ -92,7 +94,7 @@ def classify_question_intent_with_llm(question: str) -> dict:
                 "response": data.get("direct_response"),
             }
         except Exception:
-            pass
+            logger.warning("LLM intent classification failed, falling back to heuristic", exc_info=True)
 
     return _heuristic_classify_intent(q_stripped)
 
@@ -192,7 +194,7 @@ def infer_domain_from_question(question: str) -> tuple[str, str]:
             if t and t.lower() in q_lower:
                 return s or "01_express_checkout", t
     except Exception:
-        pass
+        logger.debug("schema_registry lookup failed in infer_domain_from_question", exc_info=True)
 
     return "01_express_checkout", "express_checkout"
 
@@ -280,7 +282,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                     run_mode="live_run",
                 )
             except Exception:
-                pass
+                logger.warning("context_librarian JIT retrieval LLM call failed", exc_info=True)
 
         tracing.span(
             self.state.trace_id,
@@ -293,9 +295,17 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
     def run_multi_cut_analysis(self):
         from atlys_agentic import paths
         ndjson_path = paths.events_ndjson(self.state.spec_id)
+        col_names = self._discover_columns(ndjson_path)
 
         # 1. Execute live dimension cuts
         for dim in _MANDATORY_CUT_DIMENSIONS:
+            # Skip dimensions we positively know aren't on this table instead of
+            # running a doomed query and back-filling with a fabricated row.
+            if col_names and dim not in col_names:
+                self.state.cuts[dim] = []
+                tracing.span(self.state.trace_id, f"cut_{dim}", {"skipped": "column_not_present"}, {"rows": 0})
+                continue
+
             sql_clean = self.state.base_sql.strip().rstrip(";")
             if "group by" in sql_clean.lower():
                 sql = f"{sql_clean} /* cut: {dim} */"
@@ -309,6 +319,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                 result = tools.Tool_Analytics_Compute(sql)
                 cut_rows = result.get("rows", [])
             except Exception:
+                logger.debug("Tool_Analytics_Compute failed for cut %r, trying chdb file fallback", dim, exc_info=True)
                 # Live fallback directly on events.ndjson via chDB if table not yet loaded in ClickHouse Cloud
                 if ndjson_path.exists():
                     try:
@@ -324,7 +335,7 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                             cut_rows = parsed.get("data", [])
                             self.state.sql_queries.append(file_sql)
                     except Exception:
-                        pass
+                        logger.debug("chdb file fallback failed for cut %r", dim, exc_info=True)
 
                 if not cut_rows:
                     fallback_sql = f"{sql_clean} /* cut: {dim} */"
@@ -332,29 +343,43 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                         res_fb = tools.Tool_Analytics_Compute(fallback_sql)
                         cut_rows = res_fb.get("rows", [])
                     except Exception:
-                        cut_rows = [{"dim": dim, "events": 100}]
+                        logger.debug("final analytics fallback failed for cut %r, returning empty", dim, exc_info=True)
+                        cut_rows = []
 
             self.state.cuts[dim] = cut_rows
             tracing.span(self.state.trace_id, f"cut_{dim}", {"select_sql": sql}, {"rows": len(cut_rows)})
 
         # 2. Query Live Time Series Trend & Segment Waterfall from Real Events
-        self._compute_live_views(ndjson_path)
+        self._compute_live_views(ndjson_path, col_names)
 
-    def _compute_live_views(self, ndjson_path):
+    def _discover_columns(self, ndjson_path) -> set[str]:
+        """Best-effort column discovery for the spec's local event sample.
+        Empty set means "unknown" (e.g. file not present locally), not
+        "table has no columns" — callers must not treat it as a negative."""
+        if not (ndjson_path and ndjson_path.exists()):
+            return set()
+        try:
+            import chdb, json
+            desc_raw = str(chdb.query(f"DESCRIBE file('{ndjson_path}', 'JSONEachRow')", "JSON"))
+            cols_meta = json.loads(desc_raw).get("data", []) if desc_raw.strip() else []
+            return {c.get("name") for c in cols_meta}
+        except Exception:
+            logger.debug("column discovery failed for %s", ndjson_path, exc_info=True)
+            return set()
+
+    def _compute_live_views(self, ndjson_path, col_names: set[str] | None = None):
         """Extract live real-time views from ClickHouse Cloud or events.ndjson dynamically."""
         trend_data = []
         waterfall_data = []
         total_events = 0
         total_users = 0
 
+        if col_names is None:
+            col_names = self._discover_columns(ndjson_path)
+
         if ndjson_path and ndjson_path.exists():
             try:
                 import chdb, json
-
-                # 1. Discover available columns in event stream
-                desc_raw = str(chdb.query(f"DESCRIBE file('{ndjson_path}', 'JSONEachRow')", "JSON"))
-                cols_meta = json.loads(desc_raw).get("data", []) if desc_raw.strip() else []
-                col_names = {c.get("name") for c in cols_meta}
 
                 # Dynamically choose success expression
                 if "otp_success" in col_names:
@@ -417,30 +442,39 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                     self.state.sql_queries.append(sum_sql)
 
             except Exception:
-                pass
+                logger.warning("_compute_live_views chdb query failed for %s", ndjson_path, exc_info=True)
 
-        # Build dynamic metric deltas strictly from real data
-        top_segment = waterfall_data[0]["segment"] if waterfall_data else "Primary Segment"
-        top_dropoff = waterfall_data[0]["dropoff_pct"] if waterfall_data else 0.0
+        # Build dynamic metric deltas strictly from real data — emit nothing
+        # rather than placeholder rows ("Primary Segment", "0.0%") when we
+        # never got a live total, so the frontend's no-data state is reachable.
+        metric_deltas = []
+        if total_events > 0:
+            metric_deltas = [
+                {"metric": "Live Events Scanned", "baseline": "N/A", "observed": f"{total_events:,}", "delta": "Live Sample N", "impact": "Verified Real Data"},
+                {"metric": "Unique Active Users", "baseline": "N/A", "observed": f"{total_users:,}" if total_users else "—", "delta": "Distinct Users", "impact": "Verified Real Data"},
+            ]
+            # Only a real fact if we actually got a segment breakdown — a
+            # missing waterfall must not become a fabricated "Primary
+            # Segment 0.0%" row (the totals check above doesn't cover this).
+            if waterfall_data:
+                top = waterfall_data[0]
+                top_dropoff = top["dropoff_pct"]
+                metric_deltas.append({
+                    "metric": f"{top['segment']} Dropoff Rate",
+                    "baseline": "0.0%",
+                    "observed": f"{top_dropoff}%",
+                    "delta": f"+{top_dropoff} pp",
+                    "impact": "Cohort Divergence" if top_dropoff > 0 else "Baseline Normal",
+                })
 
         self.state.views = {
-            "conversion_trend": trend_data or [
-                {"date": "2026-07-28", "baseline": 69.1, "observed": 52.4},
-                {"date": "2026-07-29", "baseline": 68.8, "observed": 44.1},
-                {"date": "2026-07-30", "baseline": 69.4, "observed": 43.8},
-                {"date": "2026-07-31", "baseline": 69.0, "observed": 43.5},
-            ],
-            "segment_waterfall": waterfall_data or [
-                {"segment": "iOS", "volume": 2302, "dropoff_pct": 3.0},
-                {"segment": "Android", "volume": 1855, "dropoff_pct": 0.0},
-                {"segment": "Web User B2C", "volume": 1043, "dropoff_pct": 0.0},
-                {"segment": "Desktop", "volume": 307, "dropoff_pct": 0.0},
-            ],
-            "metric_deltas": [
-                {"metric": "Live Events Scanned", "baseline": "N/A", "observed": f"{total_events:,}" if total_events else "—", "delta": "Live Sample N", "impact": "Verified Real Data"},
-                {"metric": "Unique Active Users", "baseline": "N/A", "observed": f"{total_users:,}" if total_users else "—", "delta": "Distinct Users", "impact": "Verified Real Data"},
-                {"metric": f"{top_segment} Dropoff Rate", "baseline": "0.0%", "observed": f"{top_dropoff}%", "delta": f"+{top_dropoff} pp", "impact": "Cohort Divergence" if top_dropoff > 0 else "Baseline Normal"},
-            ],
+            # ponytail: no live data means an empty series, not a fabricated
+            # one — the frontend currently doesn't render conversion_trend or
+            # segment_waterfall at all, so this was dead weight masquerading
+            # as real numbers. Add a "no live data" UI state if these get wired up.
+            "conversion_trend": trend_data,
+            "segment_waterfall": waterfall_data,
+            "metric_deltas": metric_deltas,
         }
 
     @router(run_multi_cut_analysis)
@@ -466,11 +500,16 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
 
     def _score_and_write(self, known_issue_match: bool):
         sample_size = sum(len(rows) for rows in self.state.cuts.values())
+        # Count cuts that actually returned rows, not just attempted keys —
+        # self.state.cuts[dim] is now populated with [] for skipped/failed
+        # cuts, so `len(cuts) == len(_MANDATORY_CUT_DIMENSIONS)` no longer
+        # distinguishes "all cuts had data" from "all cuts came back empty".
+        non_empty_cuts = sum(1 for rows in self.state.cuts.values() if rows)
         self.state.confidence = tools.Tool_Score_Confidence(
             sample_size=max(sample_size, 1),
             effect_size_pct=15.0,
             known_issue_match=known_issue_match,
-            cut_consistency=1.0 if len(self.state.cuts) == len(_MANDATORY_CUT_DIMENSIONS) else 0.5,
+            cut_consistency=non_empty_cuts / max(1, len(_MANDATORY_CUT_DIMENSIONS)),
         )
         issue_note = (
             f" This directly correlates with known issue [{self.state.matched_known_issue}] logged in the business context repository."
@@ -530,7 +569,9 @@ class AnalysisFlow(CrewAIFlow[AnalysisState]):
                     run_mode="live_run",
                 )
             except Exception:
-                pass
+                # This is exactly where the LLM-signature bug hid for a long
+                # time (call args didn't match prompts.py) — keep this loud.
+                logger.warning("product_analyst LLM synthesis failed, falling back to templated summary", exc_info=True)
 
         self.state.answer_md = (
             f"### 🔍 Product Analyst Diagnosis\n\n"

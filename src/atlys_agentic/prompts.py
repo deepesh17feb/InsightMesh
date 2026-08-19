@@ -59,13 +59,10 @@ Please ask a question regarding Atlys feature funnels, conversion rates, or tele
 
 def build_product_analyst_synthesis_prompt(
     question: str,
-    interpretation: dict,
-    headline: dict,
-    cuts_summary: dict,
-    correlation: dict,
-    timing_k_match: dict,
-    context_applied: dict,
-    trend_info: dict,
+    spec_id: str,
+    table_name: str,
+    known_issue: str,
+    cuts: dict,
     confidence: dict,
 ) -> str:
     """Construct prompt for Analytics Agent Phase 10 Synthesis."""
@@ -74,21 +71,16 @@ def build_product_analyst_synthesis_prompt(
         "Follow the locked format in docs/CUJ2.md Section 9:\n"
         "- Objective, clear headline with metric baseline, observed value, and delta in percentage points (pp).\n"
         "- State any denominator conflict clearly with numeric impact.\n"
-        "- Detail where drop/anomaly is concentrated across the 5 cuts.\n"
-        "- Explain correlation (concentration ratio) and timing coincidence with known issue (K1-K7).\n"
+        "- Detail where drop/anomaly is concentrated across the cuts.\n"
+        "- Explain correlation and timing coincidence with any matched known issue (K1-K7).\n"
         "- Explain 'The Why' (root cause mechanism, eliminating jargon).\n"
-        "- Trend state (new, persisting, or reversed) with finding_key.\n"
-        "- Context applied (matched K-issue, context version, caveats honoured).\n"
+        "- Context applied (matched K-issue, caveats honoured).\n"
         "- Confidence score and rationale.\n"
         "- Concrete, high-leverage recommended next steps.\n\n"
         f"Question: '{question}'\n"
-        f"Interpretation: {interpretation}\n"
-        f"Headline Metrics: {headline}\n"
-        f"Cuts Summary: {cuts_summary}\n"
-        f"Correlation / Concentration: {correlation}\n"
-        f"Timing & Matched Issue: {timing_k_match}\n"
-        f"Context Applied: {context_applied}\n"
-        f"Trend Info: {trend_info}\n"
+        f"Feature Domain: {spec_id} (Table: {table_name})\n"
+        f"Live Cuts: {cuts}\n"
+        f"Matched Known Issue: {known_issue or 'None'}\n"
         f"Confidence Evaluation: {confidence}\n\n"
         "Provide a polished markdown report tailored for product management."
     )

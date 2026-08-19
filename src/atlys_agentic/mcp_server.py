@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
 from atlys_agentic import ch_client, chdb_client, paths, tracing
+from atlys_agentic.tools_common import _safe_identifier
 
 load_dotenv(paths.ATLYS_AGENTIC_DIR / "config" / ".env", override=True)
 load_dotenv(paths.REPO_ROOT / ".env", override=True)
@@ -63,6 +64,10 @@ def describe_table(table_name: str) -> list[dict[str, Any]]:
     """Return column metadata (name, type) for the specified table."""
     with tracing.step("mcp::describe_table", input={"table_name": table_name}):
         try:
+            _safe_identifier(table_name)
+        except ValueError:
+            return []
+        try:
             rows = ch_client.select(f"DESCRIBE TABLE {table_name}")
             return rows
         except Exception:
@@ -82,6 +87,10 @@ def describe_table(table_name: str) -> list[dict[str, Any]]:
 def show_create_table(table_name: str) -> str:
     """Return the CREATE TABLE DDL statement for a table."""
     with tracing.step("mcp::show_create_table", input={"table_name": table_name}):
+        try:
+            _safe_identifier(table_name)
+        except ValueError:
+            return ""
         try:
             rows = ch_client.select(f"SHOW CREATE TABLE {table_name}")
             if rows:

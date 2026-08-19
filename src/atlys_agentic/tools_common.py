@@ -93,6 +93,24 @@ def _columns_from_ddl(ddl: str) -> list[str]:
     return cols
 
 
+def _safe_identifier(name: str) -> str:
+    """Reject anything that isn't a bare SQL identifier before it's spliced
+    unquoted into a query string (e.g. `DESCRIBE TABLE {name}`). Do not use
+    this for values placed inside single quotes — spec IDs like
+    '01_express_checkout' are valid string literals but not valid bare
+    identifiers (leading digit); use _safe_sql_literal for those instead."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name or ""):
+        raise ValueError(f"Unsafe identifier: {name!r}")
+    return name
+
+
+def _safe_sql_literal(value: str) -> str:
+    """Escape a value for use inside a single-quoted SQL string literal.
+    Unlike _safe_identifier, this doesn't restrict the character set — it
+    only prevents the value from breaking out of the quotes."""
+    return (value or "").replace("'", "''")
+
+
 def _assert_select_only(sql: str) -> None:
     """Assert query is strictly SELECT-only per docs/CUJ2.md §2.8."""
     sql_clean = (sql or "").strip().rstrip(";").strip()

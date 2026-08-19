@@ -33,3 +33,5 @@ services:
         value: /tmp/chdb_data
       - key: CREWAI_DISABLE_TELEMETRY
         value: "true"
+      - key: INSIGHTMESH_API_KEY
+        sync: false

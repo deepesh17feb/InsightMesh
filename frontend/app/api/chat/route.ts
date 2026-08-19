@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { BACKEND_URL } from "../../backend-url";
 
 export const maxDuration = 60;
 
@@ -6,15 +7,16 @@ export async function POST(req: NextRequest) {
   try {
     const { messages, model } = await req.json();
 
-    const backendUrl =
-      process.env.INSIGHTMESH_BACKEND_URL ||
-      "https://insightmesh-backend.onrender.com";
+    // Server-side only: authorizes HITL_APPROVE (production DDL execution)
+    // through this proxy. Never exposed to the browser bundle.
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (process.env.INSIGHTMESH_API_KEY) {
+      headers["x-api-key"] = process.env.INSIGHTMESH_API_KEY;
+    }
 
-    const response = await fetch(`${backendUrl}/v1/chat/completions`, {
+    const response = await fetch(`${BACKEND_URL}/v1/chat/completions`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         model: model || "atlys-instrumentation",
         messages,

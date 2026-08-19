@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from atlys_agentic import chdb_client, paths, tools
+from atlys_agentic.tools_common import _safe_sql_literal
 
 
 def _resolved(spec_id: str, spec_dir: Path, resolved_from: str) -> dict[str, Any]:
@@ -148,7 +149,9 @@ def Tool_Discover_Workspace_Paths(root_dir: str | None = None) -> list[dict[str,
             is_instrumented = False
             try:
                 chdb_client.init_schema()
-                rows = chdb_client.run(f'SELECT "table" FROM schema_registry WHERE "table" = \'{table_name}\'')
+                rows = chdb_client.run(
+                    f'SELECT "table" FROM schema_registry WHERE "table" = \'{_safe_sql_literal(table_name)}\''
+                )
                 is_instrumented = bool(rows)
             except Exception:
                 pass

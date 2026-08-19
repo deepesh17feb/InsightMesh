@@ -83,20 +83,33 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const activeRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
+  useEffect(() => {
+    return () => activeRequestRef.current?.abort();
+  }, []);
+
   const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+      },
+      (err) => console.error("Clipboard write failed:", err)
+    );
   };
 
   const handleSend = async (textToSend?: string) => {
     const query = textToSend || input.trim();
     if (!query || isLoading) return;
+
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -126,6 +139,7 @@ export default function ChatPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ question: query, spec_id: "chat" }),
+          signal: controller.signal,
         });
 
         if (!res.ok) {
@@ -143,6 +157,7 @@ export default function ChatPage() {
           )
         );
       } catch (err: any) {
+        if (err.name === "AbortError") return;
         console.error("Error fetching analyst insight:", err);
         setMessages((prev) =>
           prev.map((msg) =>
@@ -155,7 +170,7 @@ export default function ChatPage() {
           )
         );
       } finally {
-        setIsLoading(false);
+        if (activeRequestRef.current === controller) setIsLoading(false);
       }
       return;
     }
@@ -168,6 +183,7 @@ export default function ChatPage() {
           model: selectedModel,
           messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -211,6 +227,7 @@ export default function ChatPage() {
         );
       }
     } catch (err: any) {
+      if (err.name === "AbortError") return;
       console.error("Error streaming chat:", err);
       setMessages((prev) =>
         prev.map((msg) =>
@@ -225,7 +242,7 @@ export default function ChatPage() {
         )
       );
     } finally {
-      setIsLoading(false);
+      if (activeRequestRef.current === controller) setIsLoading(false);
     }
   };
 
